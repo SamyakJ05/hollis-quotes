@@ -1,0 +1,12 @@
+Code,Item,Unit,Rate,Notes
+LS01,Turf supply & lay,m2,11.00,
+LS02,Topsoil supply & spread 100mm,m2,8.50,
+LS03,Close board fencing 1.8m,lin m,75,concrete posts
+LS04,Fence panel replacement 6x6,each,95,
+LS05,Softwood decking supply & build,m2,120,
+LS06,Hedge removal & disposal,lin m,30,up to 2m high
+LS07,Decorative gravel 20mm on membrane,m2,28,
+LS08,Green waste removal,load,180,
+LS09,Labourer,day,170,
+LS10,Artificial grass supply & lay,m2,TBC,depends on product
+LS11,Minimum charge,job,250,
