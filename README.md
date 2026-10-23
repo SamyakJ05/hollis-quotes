@@ -6,7 +6,7 @@ Someone at Hollis Groundworks pastes a customer enquiry and gets a **draft** quo
 - **Logins** (separate companies, separate data; passwords are in the submission email, since this repo is public):
   - Hollis Groundworks: `dave@hollisgroundworks.test` (also `shaz@hollisgroundworks.test`)
   - Chase Landscapes (Dave's mate Gaz, made up): `gaz@chaselandscapes.test`
-- Add your Anthropic or OpenAI key under **Settings** for each company before drafting. Hollis already has some sample quotes from my own test run.
+- Add your Anthropic or OpenAI key under **Settings** for each company before drafting.
 
 ## The three enquiries
 
@@ -171,4 +171,26 @@ I missed the 12-hour questions window, so I made the calls above and wrote them 
 
 ## How I used AI tools
 
-_Sam to write in his own words._
+I used AI throughout, as the brief invites, so here's who did what.
+
+**Claude (Opus 5.5, in the Claude desktop app, linked to my Mac)** was my main collaborator.
+- It read the brief pack and proposed the scope and the core design: the AI picks items and quantities, code does all the money, and a person approves. I agreed the approach and the order of work.
+- It then built the app in four committed stages (foundation, AI drafting and pricing engine, review screens, docs). It wrote most of the code and the tests and ran them on my machine.
+- It tested in a real browser against my local server and then against the live site, including logging in as each company and running all three enquiries with my key.
+- It also wrote the focused prompts I used with Claude Code.
+
+**Claude Code (Sonnet 5.5)** made the follow-up changes from those prompts:
+- review safety: version checks on save and approve, acknowledging security warnings, approval blocked while there are unsaved edits, CI, security headers
+- OpenAI structured outputs and provider-aware settings, with mocked tests
+- a light-only theme, UK times and a longer drafting limit
+
+**My part:** the decisions and trade-offs (what the AI may and may not decide, a site visit beats a price, the bring-your-own-key model, keeping customer notes away from the model), reviewing each change, running the app myself with my own key, setting up Neon and Vercel, and deciding what to fix now and what to leave for later.
+
+**What testing with AI caught before I shipped it**, which is most of why I trust the result:
+- **Live run:** the default Claude model rejects forced tool calls, which would have broken drafting for anyone using their own key. Moved to structured output.
+- **Live run:** a draft dug a driveway only 150mm deep and forgot the spoil. Fixed with per-company "how we estimate" notes rather than hard-coded trade knowledge.
+- **Browser test with two tabs:** after a "changed" refusal, the editor still showed the old version, so a reviewer could approve something they hadn't seen. The editor now reloads on every new version, and saves are version-checked too.
+- **After deploying:** Vercel Deployment Protection would have shown reviewers a sign-in wall; the environment variables were on the wrong Vercel project; dark mode made typed text invisible; times showed in UTC.
+- **Local only:** a bundling issue with the local database, and a transaction deadlock.
+
+**Where I didn't rely on AI:** a person always approves, every number on a quote comes from code rather than a model, and 98 tests check each change mechanically rather than on trust. OpenAI support is tested with mocks only, because I didn't have an OpenAI key.
