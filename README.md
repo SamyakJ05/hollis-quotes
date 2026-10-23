@@ -115,6 +115,13 @@ npx tsx scripts/seed-fixture-quotes.ts   # optional: the 3 enquiries as drafts w
 
 **Deploy:** Neon database, then `DATABASE_URL=<neon pooled url> npm run db:seed` once, then a Vercel project with `DATABASE_URL`, `APP_ENCRYPTION_KEY` and `SESSION_SECRET`.
 
+## Known limitations
+
+- **The AI never sees customer records**, by design: internal notes like "paid late" shouldn't reach a model or a customer. The side effect is that it can ask for things the company already knows. In the live run, the Greenway reply asked for the site address even though "Rushall Manor, Rushall" is on the customer record. The reviewer sees the record next to the draft and can edit the line before approving. A fix would be to pass the AI only the safe fields (name, address, "repeat customer") and never the notes.
+- Output varies a little between runs (e.g. a skip vs a muck-away load for the same spoil). The engine makes every number traceable and every line editable, but there's no eval set yet to measure drift (see next steps).
+- Customer matching is by exact email. A new email address with no other match falls back to suggestions a person confirms.
+- Settings (rules, estimating notes) are read-only in the app for now; they're set in the seed.
+
 ## What I'd do next
 
 1. **Edit rates, rules and estimating notes in the app**, with a "confirm" button for each flagged rate so Shaz clears the review list, and price history (Dave's March rise).
@@ -123,6 +130,43 @@ npx tsx scripts/seed-fixture-quotes.ts   # optional: the 3 enquiries as drafts w
 4. **Learning from edits:** keep what people change on AI drafts (e.g. always adding a skip) and feed it back as company-specific guidance, with an eval set of past enquiries so prompt changes are measured, not guessed.
 5. Login rate limiting, password reset, inviting users, owner-only key management.
 6. Ask the customer the AI's questions by default when a measurement is vague, instead of pricing a guess.
+
+## Questions I would have asked
+
+I missed the 12-hour questions window, so I made the calls above and wrote them down. These are the questions I'd have sent to Dave and Shaz, in priority order. Each one maps to an assumption in this README or a flag in the app.
+
+**Prices**
+1. After the March rise, which of these are current: SB02 £38 or SB03 £41 per tonne, BP01 £62 or BP02 £58, KB01 £28 or KB02 £26?
+2. Is PT01 sandstone (£85, "inc VAT") really VAT-inclusive, so £70.83 ex VAT? Are any other old prices VAT-inclusive?
+3. Is CO02 concrete £1,250 per load or per m³, and how big is a load?
+4. What should we say about resin bound (TM03) while the supplier price keeps moving: leave it out, or quote "price on application"?
+5. Is kiln-dried sand (BP04) always included in BP01? Is it chargeable on lay-only (BP03) jobs?
+
+**How Dave prices a job**
+6. What's your standard build-up for a block-paved drive (dig depth, sub-base, sand) and for a patio?
+7. When do you use a skip, an 8-wheeler muck-away or grab hire? Is site setup on every job?
+8. What makes a job "go and look at it first" besides car parks: a size, commercial customers, drainage problems, anything with levels?
+9. Does the £450 minimum apply before or after VAT, and to every job including surveys?
+
+**Customers**
+10. Do any customers get a standing trade or partner discount, Kestrel Row for example? If so we'd set it per customer in the app, never take it from an email.
+11. Should "paid late" change anything on a quote (deposit, shorter validity), or is it just for your information?
+12. Are Patience Okafor / Mrs P Okafor, Kev / Kevin Doyle and the two Sandhu rows the same people?
+
+**The quote itself**
+13. How long are quotes valid? Do you ask for a deposit? What payment terms and T&Cs go on every quote?
+14. Who can approve: only Dave, or Shaz too? Is there a value above which Dave must approve?
+15. How do quotes go out today (Word doc, PDF, email body), and what do they look like?
+
+**Gaz**
+16. What does Gaz's price list look like, and does he need anything Hollis doesn't (e.g. plants, design time)?
+
+## What I'd do differently next time
+
+- **Read the brief as soon as it arrives and send questions inside the 12 hours.** I lost the chance to clear up most of the assumptions above with one email.
+- **Test against the real model on day one,** not after the screens were built. The structured-output issue (`claude-sonnet-5-5` refusing forced tool calls) and the shallow driveway dig only showed up once a real key was used, late in the build.
+- **Ask the client for their "how we estimate" habits up front.** They made the biggest difference to draft quality, and they're the client's knowledge, not mine.
+- **Deploy a skeleton first** so the live URL exists from the start and deployment isn't squeezed at the end.
 
 ## How I used AI tools
 
