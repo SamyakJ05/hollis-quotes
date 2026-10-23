@@ -15,13 +15,15 @@ const INJECTION_PATTERNS: RegExp[] = [
   /\b(system\s+prompt|you\s+are\s+now\s+(a|an|in))\b[^\n]*/i,
 ];
 
+/**
+ * Returns each paragraph of the enquiry that contains an instruction aimed
+ * at an automated system, once, however many patterns it trips.
+ */
 export function detectInjection(text: string): string[] {
-  const hits = new Set<string>();
-  for (const re of INJECTION_PATTERNS) {
-    const m = text.match(re);
-    if (m) hits.add(m[0].trim().slice(0, 200));
-  }
-  return [...hits];
+  const paragraphs = text.split(/\r?\n\s*\r?\n/).map((p) => p.trim()).filter(Boolean);
+  return paragraphs
+    .filter((p) => INJECTION_PATTERNS.some((re) => re.test(p)))
+    .map((p) => (p.length > 400 ? `${p.slice(0, 400)}…` : p));
 }
 
 /** Keywords from "not offered" rates, e.g. "Dropped kerb / vehicle crossover". */

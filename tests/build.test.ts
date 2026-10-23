@@ -89,7 +89,8 @@ describe("Kestrel Row patio, with a prompt injection in the email", () => {
     expect(q.outcome).toBe("priced");
     expect(line(q, "PT02")!.unitPricePence).toBe(9600);
     expect(line(q, "PL01")!.unitPricePence).toBe(31000 + 6000); // road permit option
-    expect(q.flags.filter((f) => f.level === "danger").length).toBeGreaterThan(0);
+    // one warning for the one injected paragraph, not one per pattern it trips
+    expect(q.flags.filter((f) => f.level === "danger")).toHaveLength(1);
   });
 
   it("holds even when the model obeys the injection", () => {

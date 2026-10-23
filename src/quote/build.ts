@@ -80,11 +80,13 @@ export function buildQuote(
 
   // 1. Injection / manipulation: flagged whether or not the model noticed.
   const detected = detectInjection(ctx.enquiryText);
-  const reported = draft.suspicious_content.map((s) => s.excerpt);
-  for (const excerpt of new Set([...detected, ...reported])) {
+  const reported = draft.suspicious_content.map((s) => s.excerpt.trim()).filter(Boolean);
+  const norm = (x: string) => x.toLowerCase().replace(/\s+/g, " ");
+  const extra = reported.filter((r) => !detected.some((d) => norm(d).includes(norm(r).slice(0, 60))));
+  for (const excerpt of [...detected, ...extra]) {
     flags.push({
       level: "danger",
-      message: `The enquiry contains text that tries to instruct the quoting system: "${excerpt.slice(0, 160)}". It was ignored and has no effect on prices or approval. Check with the customer before agreeing to anything it asks for.`,
+      message: `This enquiry contains text that tries to instruct the quoting system: "${excerpt}" It was ignored and has no effect on prices, charges or approval. Check with the customer before agreeing to anything it asks for.`,
     });
   }
   if (detected.length && !reported.length) {

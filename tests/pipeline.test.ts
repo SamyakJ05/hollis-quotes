@@ -93,6 +93,17 @@ describe("human review", () => {
     expect(q.totalPence).toBe(54000);
   });
 
+  it("saves edits with a customer attached, and rejects another company's customer", async () => {
+    const repo = makeRepo(ctx.db, ctx.hollisId, daveId);
+    const r = (await draftQuoteFromEnquiry(repo, enquiry("1-okafor-driveway.txt"), fake(okaforDraft))) as { quoteId: string };
+    const q = (await repo.getQuote(r.quoteId))!;
+    const lines = q.lines.map((l) => ({ ...l }));
+    expect((await repo.saveQuoteEdits(r.quoteId, { customerId: q.customerId, customerMessage: "x", lines })).ok).toBe(true);
+    const chaseCustomer = (await makeRepo(ctx.db, ctx.chaseId).listCustomers())[0];
+    const bad = await repo.saveQuoteEdits(r.quoteId, { customerId: chaseCustomer.id, customerMessage: "x", lines });
+    expect(bad).toEqual({ ok: false, error: "Unknown customer" });
+  });
+
   it("approval needs a person, happens once, and locks the quote", async () => {
     const repo = makeRepo(ctx.db, ctx.hollisId, daveId);
     const r = (await draftQuoteFromEnquiry(repo, enquiry("1-okafor-driveway.txt"), fake(okaforDraft))) as { quoteId: string };

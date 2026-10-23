@@ -19,6 +19,7 @@ import {
   quoteLines,
   quotes,
   rates,
+  users,
 } from "@/db/schema";
 import { decryptSecret, encryptSecret, last4 } from "@/lib/crypto";
 import { lineTotal } from "@/lib/money";
@@ -134,6 +135,22 @@ export function makeRepo(db: DB, companyId: string, userId: string | null = null
       return customer ? { customer, matchedOn: e && hit.email === e ? ("email" as const) : ("phone" as const) } : null;
     },
 
+    /** Possible matches for a person to confirm: same surname, or same (non-webmail) email domain. */
+    async suggestCustomers(fromName: string | null, fromEmail: string | null) {
+      const all = await db.select().from(customers).where(eq(customers.companyId, companyId));
+      const contacts = await db.select().from(customerContacts).where(eq(customerContacts.companyId, companyId));
+      const surname = fromName?.trim().split(/\s+/).pop()?.toLowerCase().replace(/[^a-z]/g, "") ?? "";
+      const domain = fromEmail?.split("@")[1]?.toLowerCase() ?? "";
+      const webmail = /^(gmail|googlemail|hotmail|outlook|live|yahoo|icloud|me|aol|btinternet|sky|example)\./;
+      return all.filter((c) => {
+        if (surname.length > 2 && `${c.displayName} ${c.companyName ?? ""}`.toLowerCase().includes(surname)) return true;
+        if (domain && !webmail.test(domain)) {
+          return contacts.some((ct) => ct.customerId === c.id && ct.email?.endsWith(`@${domain}`));
+        }
+        return false;
+      });
+    },
+
     async getEnquiry(id: string) {
       const [e] = await db.select().from(enquiries).where(and(eq(enquiries.companyId, companyId), eq(enquiries.id, id)));
       return e ?? null;
@@ -247,7 +264,13 @@ export function makeRepo(db: DB, companyId: string, userId: string | null = null
           .where(and(eq(quotes.companyId, companyId), eq(quotes.id, quoteId)));
         if (!q) return { ok: false as const, error: "Quote not found" };
         if (q.status !== "draft") return { ok: false as const, error: "Only drafts can be edited" };
-        if (edit.customerId && !(await getCustomer(edit.customerId))) return { ok: false as const, error: "Unknown customer" };
+        if (edit.customerId) {
+          const [c] = await tx
+            .select({ id: customers.id })
+            .from(customers)
+            .where(and(eq(customers.companyId, companyId), eq(customers.id, edit.customerId)));
+          if (!c) return { ok: false as const, error: "Unknown customer" };
+        }
         const [s] = await tx.select().from(companySettings).where(eq(companySettings.companyId, companyId));
         const lines = edit.lines.map((l, i) => ({ ...l, position: i, lineTotalPence: lineTotal(l.quantityMilli, l.unitPricePence) }));
         const priced = q.outcome === "priced" || lines.length > 0;
@@ -296,6 +319,11 @@ export function makeRepo(db: DB, companyId: string, userId: string | null = null
       if (!updated.length) return false;
       await audit("quote", quoteId, status, { totalPence: updated[0].totalPence });
       return true;
+    },
+
+    async userNames() {
+      const rows = await db.select({ id: users.id, name: users.name }).from(users).where(eq(users.companyId, companyId));
+      return new Map(rows.map((r) => [r.id, r.name]));
     },
 
     async auditTrail(entityId: string) {
