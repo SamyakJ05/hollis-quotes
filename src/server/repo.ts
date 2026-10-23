@@ -30,6 +30,11 @@ import { normaliseEmail, normalisePhone } from "@/lib/contact";
 
 export type Repo = ReturnType<typeof makeRepo>;
 
+// Sanity limits on a person's edits: stops typos (an extra zero) and keeps values inside the integer columns.
+const MAX_EDIT_QUANTITY_MILLI = 1_000_000_000;
+const MAX_EDIT_PRICE_PENCE = 100_000_000;
+const MAX_EDIT_LINE_TOTAL_PENCE = 100_000_000;
+
 export function makeRepo(db: DB, companyId: string, userId: string | null = null) {
   const audit = (entity: string, entityId: string | null, action: string, detail?: unknown) =>
     db.insert(auditEvents).values({ companyId, userId, entity, entityId, action, detail: detail ?? null });
@@ -247,16 +252,22 @@ export function makeRepo(db: DB, companyId: string, userId: string | null = null
 
     /**
      * A person's edits. Only drafts can change. Totals are recomputed here from
-     * the submitted lines, so the minimum charge and VAT always hold.
+     * the submitted lines, so the minimum charge and VAT always hold. The client
+     * doesn't get to say who wrote a line: a line that matches one already
+     * stored keeps its source, anything else is "human".
      */
     async saveQuoteEdits(
       quoteId: string,
       edit: {
         customerId: string | null;
         customerMessage: string;
-        lines: { rateCode: string | null; description: string; unit: Unit; quantityMilli: number; unitPricePence: number; source: "ai" | "human" | "rule"; working: string | null; assumption: string | null }[];
+        /** The version (updatedAt, ms) the person was looking at. A save against any other version is refused. */
+        seenUpdatedAtMs: number;
+        /** Must be true to add prices to a quote that is not "priced" (site visit / cannot quote). */
+        acknowledgeOutcomeChange?: boolean;
+        lines: { rateCode: string | null; description: string; unit: Unit; quantityMilli: number; unitPricePence: number; working: string | null; assumption: string | null }[];
       },
-    ) {
+    ): Promise<{ ok: true } | { ok: false; error: string; code?: "outcome_change" | "changed" }> {
       return db.transaction(async (tx) => {
         const [q] = await tx
           .select()
@@ -264,6 +275,13 @@ export function makeRepo(db: DB, companyId: string, userId: string | null = null
           .where(and(eq(quotes.companyId, companyId), eq(quotes.id, quoteId)));
         if (!q) return { ok: false as const, error: "Quote not found" };
         if (q.status !== "draft") return { ok: false as const, error: "Only drafts can be edited" };
+        if (q.updatedAt.getTime() !== edit.seenUpdatedAtMs) {
+          return {
+            ok: false as const,
+            code: "changed" as const,
+            error: "This quote was changed by someone else after you opened it. Your edits weren't saved. Reload to see the latest version.",
+          };
+        }
         if (edit.customerId) {
           const [c] = await tx
             .select({ id: customers.id })
@@ -272,13 +290,69 @@ export function makeRepo(db: DB, companyId: string, userId: string | null = null
           if (!c) return { ok: false as const, error: "Unknown customer" };
         }
         const [s] = await tx.select().from(companySettings).where(eq(companySettings.companyId, companyId));
-        const lines = edit.lines.map((l, i) => ({ ...l, position: i, lineTotalPence: lineTotal(l.quantityMilli, l.unitPricePence) }));
+        const stored = await tx
+          .select()
+          .from(quoteLines)
+          .where(and(eq(quoteLines.companyId, companyId), eq(quoteLines.quoteId, quoteId)));
+        const knownCodes = new Set(
+          (await tx.select({ code: rates.code }).from(rates).where(eq(rates.companyId, companyId))).map((r) => r.code),
+        );
+
+        const sig = (l: { rateCode: string | null; description: string; unit: string; quantityMilli: number; unitPricePence: number }) =>
+          `${l.rateCode ?? ""}|${l.description}|${l.unit}|${l.quantityMilli}|${l.unitPricePence}`;
+        const pool = [...stored];
+        const lines = [];
+        for (const [i, l] of edit.lines.entries()) {
+          const at = pool.findIndex((e) => sig(e) === sig(l));
+          const prior = at >= 0 ? pool.splice(at, 1)[0] : null;
+          if (!prior && l.rateCode && !knownCodes.has(l.rateCode)) {
+            return { ok: false as const, error: `Line ${i + 1}: ${l.rateCode} isn't on your price list` };
+          }
+          const total = lineTotal(l.quantityMilli, l.unitPricePence);
+          if (l.quantityMilli > MAX_EDIT_QUANTITY_MILLI || l.unitPricePence > MAX_EDIT_PRICE_PENCE || total > MAX_EDIT_LINE_TOTAL_PENCE) {
+            return { ok: false as const, error: `Line ${i + 1}: that quantity or price looks wrong (a line can't be over £1,000,000)` };
+          }
+          lines.push({
+            rateCode: l.rateCode,
+            description: l.description,
+            unit: l.unit,
+            quantityMilli: l.quantityMilli,
+            unitPricePence: l.unitPricePence,
+            source: prior ? prior.source : ("human" as const),
+            working: prior ? prior.working : l.working,
+            assumption: prior ? prior.assumption : l.assumption,
+            position: i,
+            lineTotalPence: total,
+          });
+        }
+
+        // Rules said "no price" (site visit / cannot quote). A person may override, knowingly.
+        const overrides = q.outcome !== "priced" && lines.length > 0;
+        if (overrides && !edit.acknowledgeOutcomeChange) {
+          return {
+            ok: false as const,
+            code: "outcome_change" as const,
+            error: `This quote was marked "${q.outcome.replace("_", " ")}", so no price was produced. Adding prices overrides that. Confirm to continue.`,
+          };
+        }
         const priced = q.outcome === "priced" || lines.length > 0;
         const totals = computeTotals(lines.map((l) => l.lineTotalPence), {
           minimumChargePence: s.minimumChargePence,
           vatRateBps: s.vatRateBps,
           priced,
         });
+        // The "no price, by design" notes stop being true once a person adds prices.
+        // Rows from before flags had codes are recognised by their text.
+        const staleNote = (f: { code?: string; message: string }) =>
+          f.code === "no_price_by_design" ||
+          f.message.startsWith("Needs a site visit. No price has been produced") ||
+          f.message.startsWith("Nothing on the price list could be used for this job");
+        const flags = overrides
+          ? [
+              ...q.flags.filter((f) => !staleNote(f)),
+              { level: "warn" as const, message: `A person added prices to a quote the rules had marked "${q.outcome.replace("_", " ")}".` },
+            ]
+          : q.flags;
         await tx.delete(quoteLines).where(and(eq(quoteLines.companyId, companyId), eq(quoteLines.quoteId, quoteId)));
         if (lines.length) await tx.insert(quoteLines).values(lines.map((l) => ({ ...l, companyId, quoteId })));
         await tx
@@ -286,6 +360,7 @@ export function makeRepo(db: DB, companyId: string, userId: string | null = null
           .set({
             ...totals,
             outcome: priced ? "priced" : q.outcome,
+            flags,
             customerId: edit.customerId,
             customerMessage: edit.customerMessage,
             updatedAt: new Date(),
@@ -297,28 +372,62 @@ export function makeRepo(db: DB, companyId: string, userId: string | null = null
           entity: "quote",
           entityId: quoteId,
           action: "edited",
-          detail: { before: { totalPence: q.totalPence }, after: { totalPence: totals.totalPence, lines: lines.length } },
+          detail: {
+            before: { totalPence: q.totalPence },
+            after: { totalPence: totals.totalPence, lines: lines.length },
+            ...(overrides ? { outcomeChange: { from: q.outcome, to: "priced" } } : {}),
+          },
         });
         return { ok: true as const };
       });
     },
 
-    /** The only way a quote leaves draft. Needs a signed-in person. */
-    async setQuoteStatus(quoteId: string, status: "approved" | "declined") {
+    /**
+     * The only way a quote leaves draft. Needs a signed-in person. Approving
+     * also needs the version the reviewer was looking at (`seenUpdatedAtMs`),
+     * so someone else's edit in the meantime can't be approved unseen, and an
+     * acknowledgement when the quote carries security warnings.
+     */
+    async setQuoteStatus(
+      quoteId: string,
+      status: "approved" | "declined",
+      opts: { seenUpdatedAtMs?: number; acknowledgedWarnings?: boolean } = {},
+    ): Promise<{ ok: true } | { ok: false; reason: "not_draft" | "changed" | "warnings_unacknowledged" }> {
       if (!userId) throw new Error("A person must approve quotes");
-      const updated = await db
-        .update(quotes)
-        .set({
-          status,
-          approvedBy: status === "approved" ? userId : null,
-          approvedAt: status === "approved" ? new Date() : null,
-          updatedAt: new Date(),
-        })
-        .where(and(eq(quotes.companyId, companyId), eq(quotes.id, quoteId), eq(quotes.status, "draft")))
-        .returning({ id: quotes.id, totalPence: quotes.totalPence });
-      if (!updated.length) return false;
-      await audit("quote", quoteId, status, { totalPence: updated[0].totalPence });
-      return true;
+      if (status === "approved" && opts.seenUpdatedAtMs === undefined) {
+        throw new Error("Approving needs the version that was reviewed");
+      }
+      return db.transaction(async (tx) => {
+        const [q] = await tx
+          .select()
+          .from(quotes)
+          .where(and(eq(quotes.companyId, companyId), eq(quotes.id, quoteId)))
+          .for("update");
+        if (!q || q.status !== "draft") return { ok: false as const, reason: "not_draft" as const };
+        const warned = q.flags.some((f) => f.level === "danger");
+        if (status === "approved") {
+          if (q.updatedAt.getTime() !== opts.seenUpdatedAtMs) return { ok: false as const, reason: "changed" as const };
+          if (warned && !opts.acknowledgedWarnings) return { ok: false as const, reason: "warnings_unacknowledged" as const };
+        }
+        await tx
+          .update(quotes)
+          .set({
+            status,
+            approvedBy: status === "approved" ? userId : null,
+            approvedAt: status === "approved" ? new Date() : null,
+            updatedAt: new Date(),
+          })
+          .where(and(eq(quotes.companyId, companyId), eq(quotes.id, quoteId)));
+        await tx.insert(auditEvents).values({
+          companyId,
+          userId,
+          entity: "quote",
+          entityId: quoteId,
+          action: status,
+          detail: { totalPence: q.totalPence, ...(status === "approved" && warned ? { securityWarningsAcknowledged: true } : {}) },
+        });
+        return { ok: true as const };
+      });
     },
 
     async userNames() {

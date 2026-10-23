@@ -49,7 +49,7 @@ approved + locked, with who and when; plain text to paste into an email
 | Which price-list items apply | Unit conversion (ft → m, ft² → m²) and all arithmetic | Final prices and quantities (any line can be edited) |
 | How each quantity is derived (e.g. area × 0.1m depth) | Whether a code is usable (unknown, retired, TBC, not-offered codes are dropped) | Which customer it is when the email doesn't match |
 | What it can't price, and why | The minimum charge (re-applied after every edit) and VAT | Anything a security warning mentions |
-| Questions for the customer | Forced site visits (area limit, "car park") | |
+| Questions for the customer | Forced site visits (area limit on each measurement and their total, "car park") | |
 | The covering note (no money allowed in it; flagged if it is) | Detecting instructions hidden in the enquiry | |
 
 **Why prices are hidden from the model:** it can't anchor on them, discount them, or invent one. The model's output schema has no field for a price, discount, payment terms or quote status, so an enquiry that asks for those has nowhere to put them. A test runs a *compromised* model answer (invented `DISCOUNT40` line, the not-offered dropped kerb, the old cheaper block price, "40% discount applied, approved" in the message) through the engine: every bad line is dropped, the totals are identical to the honest answer, and it's still a draft.
@@ -99,7 +99,7 @@ Shaz's CSVs are in `data/` exactly as sent. The importer does the mechanical cle
 
 ## Tests
 
-`npm test`: 46 tests. Import decisions, money and VAT rounding, tenant isolation (rates, customers, quotes, foreign keys, key encryption), the pricing engine on all three enquiries (including the compromised-model case and the forced site visit), and the save → edit → approve pipeline (approval needs a person, happens once, locks, is audited; another company can't approve or edit).
+`npm test`: 60 tests. Import decisions, money and VAT rounding, tenant isolation (rates, customers, quotes, foreign keys, key encryption), the pricing engine on all three enquiries (including the compromised-model case and the forced site visit), and the save → edit → approve pipeline (approval needs a person, happens once, locks, is audited; another company can't approve or edit; approving or saving a version that changed since it was opened is refused (no lost updates); security warnings must be acknowledged; adding prices to a site visit needs a confirm; the server, not the browser, decides which lines count as human-edited).
 
 `npx tsx scripts/try-enquiries.ts` runs the three enquiries through a live model (key from `.env`).
 

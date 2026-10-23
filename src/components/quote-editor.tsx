@@ -1,12 +1,14 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import type { Unit } from "@/db/schema";
 import { formatGBP, lineTotal, parsePounds } from "@/lib/money";
 import { formatQuantity, parseQuantityMilli, penceToPoundsInput } from "@/lib/quantity";
 import { UNIT_LABEL } from "@/lib/units";
 import { computeTotals } from "@/quote/totals";
 import { saveQuote } from "@/app/(app)/quotes/actions";
+import { useReview } from "./quote-review";
 
 type Line = {
   key: string;
@@ -22,6 +24,8 @@ type Line = {
 
 export type EditorProps = {
   quoteId: string;
+  /** The stored version (updatedAt, ms) this editor was built from. Sent back with every save. */
+  updatedAtMs: number;
   locked: boolean;
   outcome: string;
   initialLines: {
@@ -62,9 +66,11 @@ export function QuoteEditor(p: EditorProps) {
   const [message, setMessage] = useState(p.initialMessage);
   const [customerId, setCustomerId] = useState(p.initialCustomerId);
   const [addCode, setAddCode] = useState("");
-  const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
-  const [dirty, setDirty] = useState(false);
+  const { dirty, setDirty, notice: status, setNotice: setStatus } = useReview();
+  const router = useRouter();
   const [pending, start] = useTransition();
+  // The page remounts this editor whenever the stored quote changes; the new copy starts clean.
+  useEffect(() => () => setDirty(false), [setDirty]);
 
   const computed = useMemo(() => {
     const totals = lines.map((l) => {
@@ -98,16 +104,31 @@ export function QuoteEditor(p: EditorProps) {
     setAddCode("");
   };
 
-  const save = () =>
+  const save = () => {
+    // Adding prices to a quote the rules said not to price is allowed, but only knowingly.
+    const overrides = p.outcome !== "priced" && lines.length > 0;
+    if (overrides && !window.confirm(`The rules marked this quote "${p.outcome.replace("_", " ")}", so no price was produced. Add prices anyway?`)) return;
     start(async () => {
       const res = await saveQuote(p.quoteId, {
         customerId,
         customerMessage: message,
-        lines: lines.map(({ key: _k, ...l }) => l),
+        seenUpdatedAtMs: p.updatedAtMs,
+        acknowledgeOutcomeChange: overrides,
+        lines: lines.map((l) => ({
+          rateCode: l.rateCode,
+          description: l.description,
+          unit: l.unit,
+          quantity: l.quantity,
+          unitPrice: l.unitPrice,
+          working: l.working,
+          assumption: l.assumption,
+        })),
       });
       setStatus(res.ok ? { ok: true, text: "Saved" } : { ok: false, text: res.error ?? "Couldn't save" });
       if (res.ok) setDirty(false);
+      else if (res.code === "changed") router.refresh(); // pull in the latest version; the editor remounts with it
     });
+  };
 
   const input = "rounded border border-stone-300 px-2 py-1 disabled:border-transparent disabled:bg-transparent";
 

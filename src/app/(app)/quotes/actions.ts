@@ -22,6 +22,8 @@ const Id = z.string().uuid();
 const EditInput = z.object({
   customerId: z.string().uuid().nullable(),
   customerMessage: z.string().max(5000),
+  seenUpdatedAtMs: z.number().finite(),
+  acknowledgeOutcomeChange: z.boolean().optional(),
   lines: z
     .array(
       z.object({
@@ -30,7 +32,6 @@ const EditInput = z.object({
         unit: z.enum(UNITS),
         quantity: z.string(),
         unitPrice: z.string(),
-        source: z.enum(["ai", "human", "rule"]),
         working: z.string().max(1000).nullable(),
         assumption: z.string().max(1000).nullable(),
       }),
@@ -38,7 +39,7 @@ const EditInput = z.object({
     .max(60),
 });
 
-export async function saveQuote(quoteId: string, payload: unknown): Promise<{ ok: boolean; error?: string }> {
+export async function saveQuote(quoteId: string, payload: unknown): Promise<{ ok: boolean; error?: string; code?: string }> {
   if (!Id.safeParse(quoteId).success) return { ok: false, error: "Bad quote id" };
   const parsed = EditInput.safeParse(payload);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid edit" };
@@ -48,21 +49,39 @@ export async function saveQuote(quoteId: string, payload: unknown): Promise<{ ok
     const unitPricePence = parsePounds(l.unitPrice);
     if (quantityMilli === null) return { ok: false, error: `Line ${i + 1}: quantity must be a number (up to 3 decimals)` };
     if (unitPricePence === null) return { ok: false, error: `Line ${i + 1}: price must be in pounds, e.g. 62 or 62.50` };
-    lines.push({ ...l, quantityMilli, unitPricePence });
+    lines.push({ rateCode: l.rateCode, description: l.description, unit: l.unit, working: l.working, assumption: l.assumption, quantityMilli, unitPricePence });
   }
   const { repo } = await requireTenant();
-  const res = await repo.saveQuoteEdits(quoteId, { ...parsed.data, lines });
+  const res = await repo.saveQuoteEdits(quoteId, {
+    customerId: parsed.data.customerId,
+    customerMessage: parsed.data.customerMessage,
+    seenUpdatedAtMs: parsed.data.seenUpdatedAtMs,
+    acknowledgeOutcomeChange: parsed.data.acknowledgeOutcomeChange,
+    lines,
+  });
   if (!res.ok) return res;
   revalidatePath(`/quotes/${quoteId}`);
   return { ok: true };
 }
 
-export async function approveQuote(quoteId: string, _prev: unknown, form: FormData) {
-  if (!Id.safeParse(quoteId).success) return { error: "Bad quote id" };
+export async function approveQuote(quoteId: string, seenUpdatedAtMs: number, _prev: unknown, form: FormData) {
+  if (!Id.safeParse(quoteId).success || !Number.isFinite(seenUpdatedAtMs)) return { error: "Bad quote id" };
   if (form.get("checked") !== "yes") return { error: "Tick the box to confirm you've checked the quote." };
   const { repo } = await requireTenant();
-  const ok = await repo.setQuoteStatus(quoteId, "approved");
-  if (!ok) return { error: "This quote is no longer a draft." };
+  const res = await repo.setQuoteStatus(quoteId, "approved", {
+    seenUpdatedAtMs,
+    acknowledgedWarnings: form.get("warnings") === "yes",
+  });
+  if (!res.ok) {
+    revalidatePath(`/quotes/${quoteId}`);
+    return {
+      error: {
+        not_draft: "This quote is no longer a draft.",
+        changed: "This quote was changed after you opened it. Review the latest version, then approve.",
+        warnings_unacknowledged: "Tick the box to say you've read the security warnings.",
+      }[res.reason],
+    };
+  }
   revalidatePath(`/quotes/${quoteId}`);
   revalidatePath("/");
   return { error: undefined };

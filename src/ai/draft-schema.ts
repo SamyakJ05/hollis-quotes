@@ -73,6 +73,7 @@ export type DraftLineItem = z.infer<typeof LineItemSchema>;
 export type Exclusion = z.infer<typeof ExclusionSchema>;
 
 export const draftJsonSchema = () => {
-  const { $schema: _ignored, ...schema } = z.toJSONSchema(DraftSchema, { target: "draft-7" }) as Record<string, unknown>;
+  const schema = z.toJSONSchema(DraftSchema, { target: "draft-7" }) as Record<string, unknown>;
+  delete schema.$schema;
   return schema;
 };

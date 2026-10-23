@@ -123,3 +123,52 @@ describe("minimum charge", () => {
     expect(q.totals.totalPence).toBe(54000);
   });
 });
+
+describe("guards the model can't talk its way past", () => {
+  const area = (id: string, text: string, value: number) => ({
+    id, label: id, kind: "area" as const, source_text: text, length: null, width: null,
+    stated_area: { value, unit: "m2" as const }, parts: [], stated_volume_m3: null, count: null, certainty: "stated" as const,
+  });
+  const lineOf = (code: string, over: object = {}) => ({
+    rate_code: code, measurement_id: null, multiplier: null, round_up: false, quantity: null, options: [], working: "", assumption: null, ...over,
+  });
+
+  it("adds areas up: two 100 m² areas are a site visit under a 150 m² limit", () => {
+    const d = { ...okaforDraft, measurements: [area("a", "the front lawn", 100), area("b", "the back lawn", 100)], line_items: [lineOf("BP01", { measurement_id: "a" })] };
+    const q = buildQuote(d, { enquiryText: "Two lawns to pave", rates, settings });
+    expect(q.outcome).toBe("site_visit");
+    expect(q.lines).toHaveLength(0);
+    expect(q.details.siteVisitReasons.join(" ")).toMatch(/add up to about 200 m²/);
+  });
+
+  it("counts an area once when it is listed twice from the same words", () => {
+    const d = { ...okaforDraft, measurements: [area("a", "the front lawn", 100), area("b", "The front  lawn", 100)], line_items: [lineOf("BP01", { measurement_id: "a" })] };
+    const q = buildQuote(d, { enquiryText: "One lawn to pave", rates, settings });
+    expect(q.outcome).toBe("priced");
+  });
+
+  it("leaves the quantity blank when a measurement is in the wrong unit", () => {
+    const d = {
+      ...okaforDraft,
+      measurements: [okaforDraft.measurements[1]], // edging, in metres
+      line_items: [lineOf("BP01", { measurement_id: "edging" })], // BP01 is per m²
+    };
+    const q = buildQuote(d, { enquiryText: "Edging only", rates, settings });
+    expect(line(q, "BP01")!.quantityMilli).toBe(0);
+    expect(line(q, "BP01")!.lineTotalPence).toBe(0);
+    expect(q.flags.some((f) => f.message.includes("left blank"))).toBe(true);
+  });
+
+  it("blanks an absurd quantity instead of pricing it", () => {
+    const d = { ...okaforDraft, measurements: [area("a", "a field", 140)], line_items: [lineOf("BP01", { measurement_id: "a", multiplier: 1000 })] };
+    const q = buildQuote(d, { enquiryText: "A big field", rates, settings });
+    expect(line(q, "BP01")!.quantityMilli).toBe(0);
+    expect(q.flags.some((f) => f.message.includes("unusually large"))).toBe(true);
+  });
+
+  it("flags the same code on two lines", () => {
+    const d = { ...okaforDraft, line_items: [lineOf("PL02", { quantity: 1 }), lineOf("PL02", { quantity: 1 })] };
+    const q = buildQuote(d, { enquiryText: "Small job", rates, settings });
+    expect(q.flags.some((f) => f.message.includes("PL02 appears on more than one line"))).toBe(true);
+  });
+});

@@ -190,7 +190,7 @@ export const quotes = pgTable(
     aiOutput: jsonb("ai_output"),
     aiProvider: text("ai_provider"),
     aiModel: text("ai_model"),
-    flags: jsonb("flags").$type<{ level: "info" | "warn" | "danger"; message: string }[]>().notNull().default([]),
+    flags: jsonb("flags").$type<{ level: "info" | "warn" | "danger"; message: string; code?: string }[]>().notNull().default([]),
     subtotalPence: integer("subtotal_pence").notNull().default(0),
     minimumChargeAppliedPence: integer("minimum_charge_applied_pence").notNull().default(0),
     vatPence: integer("vat_pence").notNull().default(0),

@@ -4,6 +4,7 @@ import { requireTenant } from "@/server/session";
 import { Flags, OutcomeBadge, StatusBadge } from "@/components/badges";
 import { QuoteEditor } from "@/components/quote-editor";
 import { ApprovePanel } from "@/components/approve-panel";
+import { ReviewProvider } from "@/components/quote-review";
 import { CopyButton } from "@/components/copy-button";
 import { renderQuoteText } from "@/quote/render-text";
 import { parseEnquiryHeaders } from "@/lib/enquiry";
@@ -56,6 +57,7 @@ export default async function QuotePage({ params }: { params: Promise<{ id: stri
 
       <Flags flags={quote.flags} />
 
+      <ReviewProvider>
       <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
         <div className="min-w-0 space-y-6">
           {d && d.siteVisitReasons.length > 0 && (
@@ -65,7 +67,10 @@ export default async function QuotePage({ params }: { params: Promise<{ id: stri
             </div>
           )}
 
+          {/* key: remount with fresh data whenever the stored quote changes, so what's on screen is what approve acts on */}
           <QuoteEditor
+            key={quote.updatedAt.getTime()}
+            updatedAtMs={quote.updatedAt.getTime()}
             quoteId={quote.id}
             locked={locked}
             outcome={quote.outcome}
@@ -141,7 +146,7 @@ export default async function QuotePage({ params }: { params: Promise<{ id: stri
           </div>
 
           {quote.status === "draft" ? (
-            <ApprovePanel quoteId={quote.id} dangerCount={dangerCount} priced={quote.outcome === "priced"} />
+            <ApprovePanel quoteId={quote.id} updatedAtMs={quote.updatedAt.getTime()} dangerCount={dangerCount} priced={quote.outcome === "priced"} />
           ) : (
             <div className="rounded border border-stone-200 bg-white p-4 text-sm">
               <p>
@@ -167,6 +172,7 @@ export default async function QuotePage({ params }: { params: Promise<{ id: stri
           </div>
         </aside>
       </div>
+      </ReviewProvider>
     </div>
   );
 }

@@ -59,3 +59,18 @@ export const COMPATIBLE: Record<string, ResolvedMeasurement["unit"][]> = {
   m3: ["m3"],
   each: ["each"],
 };
+
+/**
+ * Total area across the customer's measurements. Measurements quoted from the
+ * same words (e.g. "the lawn" listed once for turf and once for edging) count
+ * once, so a model that lists an area twice can't inflate the total.
+ */
+export function totalAreaM2(measurements: ResolvedMeasurement[]): number {
+  const byWords = new Map<string, number>();
+  for (const m of measurements) {
+    if (m.unit !== "m2" || m.value === null) continue;
+    const key = m.sourceText.toLowerCase().replace(/\s+/g, " ").trim() || `id:${m.id}`;
+    byWords.set(key, Math.max(byWords.get(key) ?? 0, m.value));
+  }
+  return [...byWords.values()].reduce((s, v) => s + v, 0);
+}

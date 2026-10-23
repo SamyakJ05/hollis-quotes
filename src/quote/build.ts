@@ -7,12 +7,14 @@
 import type { Draft, Exclusion } from "@/ai/draft-schema";
 import type { RateAddon, RateStatus, Unit } from "@/db/schema";
 import { formatGBP, lineTotal, toMilli } from "@/lib/money";
+import { formatQuantity } from "@/lib/quantity";
 import { UNIT_LABEL } from "@/lib/units";
 import { detectInjection, messageMentionsMoney, notOfferedMentions, siteVisitKeywordHits } from "./guards";
-import { COMPATIBLE, resolveMeasurement, type ResolvedMeasurement } from "./measurements";
+import { COMPATIBLE, resolveMeasurement, totalAreaM2, type ResolvedMeasurement } from "./measurements";
 import { computeTotals, type Totals } from "./totals";
 
-export type Flag = { level: "info" | "warn" | "danger"; message: string };
+/** `code` marks flags the code may later retire (e.g. "no price, by design" once a person adds prices). */
+export type Flag = { level: "info" | "warn" | "danger"; message: string; code?: "no_price_by_design" };
 
 export type RateForPricing = {
   code: string;
@@ -67,6 +69,10 @@ export type BuiltQuote = {
 
 const EPS = 1e-9;
 
+/** A model-derived line past either limit is blanked for a person to fill in. */
+export const MAX_LINE_QUANTITY = 10_000;
+export const MAX_LINE_TOTAL_PENCE = 5_000_000; // £50,000
+
 export function buildQuote(
   draft: Draft,
   ctx: { enquiryText: string; rates: RateForPricing[]; settings: PricingSettings },
@@ -110,6 +116,10 @@ export function buildQuote(
     if (m.unit === "m2" && m.value !== null && m.value > ctx.settings.siteVisitAreaM2) {
       forced.push(`${m.label} is about ${Math.round(m.value)} m², over the ${ctx.settings.siteVisitAreaM2} m² limit for emailed quotes`);
     }
+  }
+  const totalArea = totalAreaM2(measurements);
+  if (totalArea > ctx.settings.siteVisitAreaM2 && !forced.some((f) => f.includes("m²"))) {
+    forced.push(`The measurements add up to about ${Math.round(totalArea)} m², over the ${ctx.settings.siteVisitAreaM2} m² limit for emailed quotes`);
   }
   for (const k of siteVisitKeywordHits(ctx.enquiryText, ctx.settings.siteVisitKeywords)) {
     forced.push(`The enquiry mentions "${k}"`);
@@ -157,10 +167,12 @@ export function buildQuote(
         } else {
           qty = m.value * mult;
           if (mult === 1 && !COMPATIBLE[rate.unit]?.includes(m.unit)) {
+            // Never price a quantity in the wrong unit: leave it blank for a person.
             flags.push({
               level: "warn",
-              message: `${rate.code} is priced per ${UNIT_LABEL[rate.unit]} but its quantity came from "${m.label}" in ${UNIT_LABEL[m.unit]}. Check it.`,
+              message: `${rate.code} is priced per ${UNIT_LABEL[rate.unit]} but its quantity came from "${m.label}" in ${UNIT_LABEL[m.unit]}. The quantity was left blank; please fill it in.`,
             });
+            qty = 0;
           }
           if (m.certainty === "vague") {
             flags.push({ level: "warn", message: `${rate.code} uses a vague measurement ("${m.sourceText}"). Confirm before sending.` });
@@ -182,7 +194,14 @@ export function buildQuote(
         else flags.push({ level: "info", message: `Option "${opt}" isn't on your list for ${rate.code}; ignored.` });
       }
       const unitPrice = rate.ratePence + chosen.reduce((s, a) => s + a.amountPence, 0);
-      const quantityMilli = toMilli(qty);
+      let quantityMilli = toMilli(qty);
+      if (qty > MAX_LINE_QUANTITY || lineTotal(quantityMilli, unitPrice) > MAX_LINE_TOTAL_PENCE) {
+        flags.push({
+          level: "warn",
+          message: `${rate.code} (${rate.description}) came to an unusually large amount (${formatQuantity(quantityMilli)} ${UNIT_LABEL[rate.unit]}). The quantity was left blank; please check it.`,
+        });
+        quantityMilli = 0;
+      }
 
       rate.caveats.forEach((c) => conditions.add(`${rate.description}: ${c}`));
       if (rate.reviewFlag) flags.push({ level: "info", message: `${rate.code}: ${rate.reviewFlag}` });
@@ -200,14 +219,21 @@ export function buildQuote(
         assumption: li.assumption,
       });
     }
+    const seen = new Set<string>();
+    for (const l of lines) {
+      if (l.rateCode && seen.has(l.rateCode)) {
+        flags.push({ level: "warn", message: `${l.rateCode} appears on more than one line. Check it isn't counted twice.` });
+      }
+      if (l.rateCode) seen.add(l.rateCode);
+    }
     if (!lines.length) {
       outcome = "cannot_quote";
-      flags.push({ level: "warn", message: "Nothing on the price list could be used for this job, so there's no price." });
+      flags.push({ level: "warn", code: "no_price_by_design", message: "Nothing on the price list could be used for this job, so there's no price." });
     }
   }
 
   if (outcome === "site_visit") {
-    flags.push({ level: "info", message: "Needs a site visit. No price has been produced, by design." });
+    flags.push({ level: "info", code: "no_price_by_design", message: "Needs a site visit. No price has been produced, by design." });
   }
 
   if (messageMentionsMoney(draft.customer_message)) {
