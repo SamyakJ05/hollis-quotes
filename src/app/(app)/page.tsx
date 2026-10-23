@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { formatDateTime } from "@/lib/dates";
 import { requireTenant } from "@/server/session";
 import { formatGBP } from "@/lib/money";
 import { OutcomeBadge, StatusBadge } from "@/components/badges";
@@ -36,7 +37,7 @@ export default async function QuotesPage() {
                   <tr key={q.id} className="hover:bg-stone-50">
                     <td className="px-3 py-2">
                       <Link href={`/quotes/${q.id}`} className="font-medium hover:underline">{danger && "⛔ "}{q.jobSummary ?? "Quote"}</Link>
-                      <div className="text-xs text-stone-500">{q.createdAt.toLocaleString("en-GB")}</div>
+                      <div className="text-xs text-stone-500">{formatDateTime(q.createdAt)}</div>
                     </td>
                     <td className="px-3 py-2">{q.customerId ? names.get(q.customerId) : <span className="text-stone-400">New</span>}</td>
                     <td className="px-3 py-2"><OutcomeBadge outcome={q.outcome} /></td>

@@ -99,7 +99,7 @@ Shaz's CSVs are in `data/` exactly as sent. The importer does the mechanical cle
 
 ## Tests
 
-`npm test`: 93 tests. Import decisions, money and VAT rounding, tenant isolation (rates, customers, quotes, foreign keys, key encryption), the pricing engine on all three enquiries (including the compromised-model case and the forced site visit), and the save → edit → approve pipeline (approval needs a person, happens once, locks, is audited; another company can't approve or edit; approving or saving a version that changed since it was opened is refused (no lost updates); security warnings must be acknowledged; adding prices to a site visit needs a confirm; the server, not the browser, decides which lines count as human-edited).
+`npm test`: 98 tests. Import decisions, money and VAT rounding, tenant isolation (rates, customers, quotes, foreign keys, key encryption), the pricing engine on all three enquiries (including the compromised-model case and the forced site visit), and the save → edit → approve pipeline (approval needs a person, happens once, locks, is audited; another company can't approve or edit; approving or saving a version that changed since it was opened is refused (no lost updates); security warnings must be acknowledged; adding prices to a site visit needs a confirm; the server, not the browser, decides which lines count as human-edited).
 
 `npx tsx scripts/try-enquiries.ts` runs the three enquiries through a live model (key from `.env`; add `--provider openai` to use `OPENAI_API_KEY` instead).
 

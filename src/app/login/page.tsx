@@ -14,11 +14,11 @@ export default function LoginPage() {
         </div>
         <label className="block text-sm">
           <span className="text-stone-700">Email</span>
-          <input name="email" type="email" required autoComplete="email" className="mt-1 w-full rounded border border-stone-300 px-3 py-2" />
+          <input name="email" type="email" required autoComplete="email" className="mt-1 w-full rounded border border-stone-300 px-3 py-2 text-stone-900" />
         </label>
         <label className="block text-sm">
           <span className="text-stone-700">Password</span>
-          <input name="password" type="password" required autoComplete="current-password" className="mt-1 w-full rounded border border-stone-300 px-3 py-2" />
+          <input name="password" type="password" required autoComplete="current-password" className="mt-1 w-full rounded border border-stone-300 px-3 py-2 text-stone-900" />
         </label>
         {state?.error && <p className="text-sm text-red-700">{state.error}</p>}
         <button disabled={pending} className="w-full rounded bg-stone-900 px-3 py-2 text-white disabled:opacity-60">

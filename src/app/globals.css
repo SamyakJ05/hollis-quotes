@@ -3,6 +3,8 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  /* The app is designed light-only (white cards, stone text). */
+  color-scheme: light;
 }
 
 @theme inline {
@@ -12,11 +14,11 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Form controls don't inherit the page colour by default. */
+input,
+textarea,
+select {
+  color: var(--foreground);
 }
 
 body {

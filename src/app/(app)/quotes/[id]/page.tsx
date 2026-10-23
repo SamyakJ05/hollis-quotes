@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { formatDateTime } from "@/lib/dates";
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/server/session";
 import { Flags, OutcomeBadge, StatusBadge } from "@/components/badges";
@@ -46,7 +47,7 @@ export default async function QuotePage({ params }: { params: Promise<{ id: stri
           <Link href="/" className="text-sm text-stone-500 hover:underline">← Quotes</Link>
           <h1 className="mt-1 text-xl font-semibold">{quote.jobSummary ?? "Quote"}</h1>
           <p className="text-sm text-stone-500">
-            {enquiry?.subject ?? "Pasted enquiry"} · drafted {quote.createdAt.toLocaleString("en-GB")} by {quote.aiModel}
+            {enquiry?.subject ?? "Pasted enquiry"} · drafted {formatDateTime(quote.createdAt)} by {quote.aiModel}
           </p>
         </div>
         <div className="flex gap-2">
@@ -152,7 +153,7 @@ export default async function QuotePage({ params }: { params: Promise<{ id: stri
               <p>
                 {quote.status === "approved" ? "Approved" : "Declined"}
                 {quote.approvedBy && ` by ${names.get(quote.approvedBy) ?? "someone"}`}
-                {quote.approvedAt && ` on ${quote.approvedAt.toLocaleString("en-GB")}`}. Locked.
+                {quote.approvedAt && ` on ${formatDateTime(quote.approvedAt)}`}. Locked.
               </p>
             </div>
           )}
@@ -166,7 +167,7 @@ export default async function QuotePage({ params }: { params: Promise<{ id: stri
             <h2 className="font-medium">History</h2>
             <ul className="mt-2 space-y-1 text-stone-600">
               {trail.map((t) => (
-                <li key={t.id}>{t.createdAt.toLocaleString("en-GB")}: {t.action.replaceAll("_", " ")}{t.userId ? ` (${names.get(t.userId)})` : ""}</li>
+                <li key={t.id}>{formatDateTime(t.createdAt)}: {t.action.replaceAll("_", " ")}{t.userId ? ` (${names.get(t.userId)})` : ""}</li>
               ))}
             </ul>
           </div>

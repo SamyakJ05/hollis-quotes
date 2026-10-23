@@ -26,7 +26,7 @@ Next.js 15 (App Router, server actions) · TypeScript · Tailwind 4 · Drizzle O
 npm install
 npm run db:seed        # runs migrations, seeds Hollis + Chase (idempotent; fills estimating notes if missing)
 npm run dev            # http://localhost:3000
-npm test               # 93 tests (vitest, real Postgres via PGlite)
+npm test               # 98 tests (vitest, real Postgres via PGlite)
 npm run typecheck
 npx drizzle-kit generate --name <change>   # after editing src/db/schema.ts
 npx tsx scripts/try-enquiries.ts [model] [fileprefix] [--provider anthropic|openai]  # 3 enquiries vs a live model, needs ANTHROPIC_API_KEY (or OPENAI_API_KEY) in .env
@@ -99,6 +99,9 @@ scripts/                    migrate, seed, try-enquiries, seed-fixture-quotes
 
 ## Gotchas
 
+- **Light-only UI** (`color-scheme: light`, no dark-mode block in `globals.css`); don't reintroduce `prefers-color-scheme: dark` without restyling every card. Form controls get `color: var(--foreground)` explicitly.
+- **Dates are UK time**: format with `formatDate`/`formatDateTime` from `src/lib/dates.ts` (Europe/London). Never `toLocaleString` a Date on the server, which runs in UTC on Vercel.
+- `src/app/(app)/quotes/new/page.tsx` has `maxDuration = 120` because live drafts take 30-45s and a repair retry can double that.
 - `next.config.ts` has `serverExternalPackages: ["@electric-sql/pglite"]`; bundling PGlite breaks its wasm loading.
 - PGlite allows **one process** on `./.pglite`: stop `npm run dev` before running seed/migrate/scripts against it.
 - `node_modules` is platform-specific (esbuild, swc, lightningcss). Reinstall after moving between macOS and Linux.

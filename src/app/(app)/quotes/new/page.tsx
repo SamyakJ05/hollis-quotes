@@ -2,8 +2,8 @@ import Link from "next/link";
 import { requireTenant } from "@/server/session";
 import { NewQuoteForm } from "./form";
 
-// Drafting calls the AI and takes 20-40s; the default function timeout is shorter on some hosts.
-export const maxDuration = 60;
+// Drafting calls the AI and takes 30-45s live and a repair retry can double that; the default function timeout is shorter.
+export const maxDuration = 120;
 
 export default async function NewQuotePage() {
   const { repo } = await requireTenant();

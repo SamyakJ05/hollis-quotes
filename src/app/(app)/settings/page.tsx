@@ -1,4 +1,5 @@
 import { requireTenant } from "@/server/session";
+import { formatDate } from "@/lib/dates";
 import { formatGBP } from "@/lib/money";
 import { DEFAULT_MODELS, PROVIDER_INFO } from "@/ai/provider-info";
 import { KeyForm } from "./key-form";
@@ -23,7 +24,7 @@ export default async function SettingsPage() {
           <div className="flex flex-wrap items-center gap-3 rounded bg-stone-50 p-3 text-sm">
             <span>
               {PROVIDER_INFO[s.aiProvider].label} key ending <span className="font-mono">…{s.apiKeyLast4}</span>
-              {s.apiKeyUpdatedAt && <> · saved {s.apiKeyUpdatedAt.toLocaleDateString("en-GB")}</>} · model{" "}
+              {s.apiKeyUpdatedAt && <> · saved {formatDate(s.apiKeyUpdatedAt)}</>} · model{" "}
               <span className="font-mono">{s.aiModel ?? DEFAULT_MODELS[s.aiProvider]}</span>
             </span>
             <form action={removeKey} className="ml-auto">
