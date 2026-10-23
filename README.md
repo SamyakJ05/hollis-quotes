@@ -3,6 +3,7 @@
 Someone at Hollis Groundworks pastes a customer enquiry and gets a **draft** quote worked out from their own price list. A person checks it, edits it if needed, and approves it. Nothing goes to a customer without a person saying yes, and the app never sends email.
 
 - **Live app:** https://hollis-quotes.vercel.app
+- **Walkthrough video (4:23):** https://hollis-quotes.vercel.app/demo/walkthrough.mp4
 - **Logins** (separate companies, separate data; passwords are in the submission email, since this repo is public):
   - Hollis Groundworks: `dave@hollisgroundworks.test` (also `shaz@hollisgroundworks.test`)
   - Chase Landscapes (Dave's mate Gaz, made up): `gaz@chaselandscapes.test`
