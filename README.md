@@ -177,7 +177,7 @@ I used AI throughout, as the brief invites, so here's who did what.
 - It read the brief pack and proposed the scope and the core design: the AI picks items and quantities, code does all the money, and a person approves. I agreed the approach and the order of work.
 - It then built the app in four committed stages (foundation, AI drafting and pricing engine, review screens, docs). It wrote most of the code and the tests and ran them on my machine.
 - It tested in a real browser against my local server and then against the live site, including logging in as each company and running all three enquiries with my key.
-- It also wrote the focused prompts I used with Claude Code, and recorded the walkthrough video: a scripted browser driving the same build with my key, the drafts generated live, and on-screen captions.
+- It also wrote the focused prompts I used with Claude Code, and recorded the walkthrough video: a scripted browser driving the same build with my key, the drafts generated live, with on-screen captions and a synthetic narrator voice (the open-source Kokoro text-to-speech model, not my voice).
 
 **Claude Code (Sonnet 5.5)** made the follow-up changes from those prompts:
 - review safety: version checks on save and approve, acknowledging security warnings, approval blocked while there are unsaved edits, CI, security headers
