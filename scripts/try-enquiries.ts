@@ -9,6 +9,7 @@ import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { parseCsv } from "../src/import/csv";
 import { normaliseRates } from "../src/import/rates";
 import { HOLLIS_RATE_DECISIONS } from "../src/import/hollis-decisions";
+import { HOLLIS_ESTIMATING_NOTES } from "../src/import/estimating-notes";
 import { buildSystemPrompt, buildUserMessage } from "../src/ai/prompt";
 import { makeDraftCaller } from "../src/ai/providers";
 import { buildQuote } from "../src/quote/build";
@@ -19,7 +20,7 @@ async function main() {
   if (!apiKey) throw new Error("Set ANTHROPIC_API_KEY in .env");
   const rates = normaliseRates(parseCsv(readFileSync("data/hollis-rates.csv", "utf8")), { vatBps: 2000, decisions: HOLLIS_RATE_DECISIONS }).rates;
   const settings = { minimumChargePence: 45000, vatRateBps: 2000, siteVisitAreaM2: 150, siteVisitKeywords: ["car park", "carpark", "car-park"] };
-  const system = buildSystemPrompt({ companyName: "Hollis Groundworks", tradingArea: "Walsall", siteVisitAreaM2: 150, rates });
+  const system = buildSystemPrompt({ companyName: "Hollis Groundworks", tradingArea: "Walsall", siteVisitAreaM2: 150, estimatingNotes: HOLLIS_ESTIMATING_NOTES, rates });
   const call = makeDraftCaller({ provider: "anthropic", apiKey, model: process.argv[2] ?? null });
   mkdirSync(".tmp", { recursive: true });
 

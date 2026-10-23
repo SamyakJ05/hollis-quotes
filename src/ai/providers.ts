@@ -1,6 +1,7 @@
 /**
  * Calls the company's own model with the company's own key.
- * Both providers are forced to answer through one tool, then the result is
+ * Anthropic answers in structured-output mode (forced tool call as a fallback),
+ * OpenAI through a forced tool call; the result is then
  * validated with Zod. One retry with the validation error; then we give up
  * loudly rather than guess.
  */
@@ -21,19 +22,96 @@ export class AiError extends Error {
   }
 }
 
-async function callAnthropic(creds: AiCredentials, system: string, messages: Anthropic.MessageParam[]) {
-  const client = new Anthropic({ apiKey: creds.apiKey, timeout: 90_000, maxRetries: 1 });
+/**
+ * Strict JSON-schema copy for providers' structured-output modes: every object
+ * closed and fully required, and value constraints (min/max/length) removed,
+ * since not every model accepts them. Zod re-checks the full rules afterwards.
+ */
+export function strictSchema(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(strictSchema);
+  if (!node || typeof node !== "object") return node;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+    if (["minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "minLength", "maxLength", "minItems", "maxItems", "pattern", "format"].includes(k)) continue;
+    out[k] = strictSchema(v);
+  }
+  if (out.type === "object" && out.properties) {
+    out.additionalProperties = false;
+    out.required = Object.keys(out.properties as object);
+  }
+  return out;
+}
+
+type AnthropicResult = { model: string; raw: unknown; retry: (feedback: string) => Promise<AnthropicResult> };
+
+/**
+ * Preferred: structured output (output_config.format). Some current models
+ * refuse forced tool calls, so that's only the fallback for older models
+ * that don't support structured output.
+ */
+async function callAnthropic(creds: AiCredentials, system: string, messages: Anthropic.MessageParam[], mode: "format" | "tool" = "format"): Promise<AnthropicResult> {
+  const client = new Anthropic({ apiKey: creds.apiKey, timeout: 120_000, maxRetries: 1 });
   const model = creds.model || DEFAULT_MODELS.anthropic;
+  const schema = strictSchema(draftJsonSchema()) as Record<string, unknown>;
+  if (mode === "format") {
+    try {
+      const res = await client.messages.create({
+        model,
+        max_tokens: 8000,
+        system,
+        messages,
+        output_config: { format: { type: "json_schema", schema } },
+      });
+      const text = res.content.map((b) => (b.type === "text" ? b.text : "")).join("");
+      let raw: unknown = null;
+      try {
+        raw = JSON.parse(text);
+      } catch {
+        raw = null;
+      }
+      return {
+        model,
+        raw,
+        retry: (feedback) =>
+          callAnthropic(creds, system, [...messages, { role: "assistant", content: text || "{}" }, { role: "user", content: feedback }], "format"),
+      };
+    } catch (e) {
+      const status = (e as { status?: number }).status;
+      const msg = String((e as Error).message ?? "");
+      if (status === 400 && /output_config|output format|structured|json_schema/i.test(msg)) {
+        return callAnthropic(creds, system, messages, "tool");
+      }
+      throw e;
+    }
+  }
   const res = await client.messages.create({
     model,
-    max_tokens: 4000,
+    max_tokens: 8000,
     system,
     messages,
-    tools: [{ name: TOOL_NAME, description: TOOL_DESCRIPTION, input_schema: draftJsonSchema() as Anthropic.Tool.InputSchema }],
+    tools: [{ name: TOOL_NAME, description: TOOL_DESCRIPTION, input_schema: schema as Anthropic.Tool.InputSchema }],
     tool_choice: { type: "tool", name: TOOL_NAME },
   });
   const block = res.content.find((b) => b.type === "tool_use");
-  return { model, raw: block?.type === "tool_use" ? block.input : null, toolUseId: block?.type === "tool_use" ? block.id : null, content: res.content };
+  const raw = block?.type === "tool_use" ? block.input : null;
+  return {
+    model,
+    raw,
+    retry: (feedback) =>
+      callAnthropic(
+        creds,
+        system,
+        [
+          ...messages,
+          { role: "assistant", content: res.content },
+          {
+            role: "user",
+            content: block?.type === "tool_use" ? [{ type: "tool_result", tool_use_id: block.id, is_error: true, content: feedback }] : feedback,
+          },
+        ],
+        "tool",
+      ),
+  };
 }
 
 async function callOpenAI(creds: AiCredentials, system: string, user: string, feedback: string | null) {
@@ -69,23 +147,10 @@ export function makeDraftCaller(creds: AiCredentials): DraftCaller {
   return async (system, user) => {
     try {
       if (creds.provider === "anthropic") {
-        const messages: Anthropic.MessageParam[] = [{ role: "user", content: user }];
-        let r = await callAnthropic(creds, system, messages);
+        let r = await callAnthropic(creds, system, [{ role: "user", content: user }]);
         let parsed = DraftSchema.safeParse(r.raw);
-        if (!parsed.success && r.toolUseId) {
-          messages.push({ role: "assistant", content: r.content });
-          messages.push({
-            role: "user",
-            content: [
-              {
-                type: "tool_result",
-                tool_use_id: r.toolUseId,
-                is_error: true,
-                content: `Invalid. Fix these and call ${TOOL_NAME} again:\n${describeIssues(parsed.error)}`,
-              },
-            ],
-          });
-          r = await callAnthropic(creds, system, messages);
+        if (!parsed.success) {
+          r = await r.retry(`That answer didn't match the required format. Fix these and answer again in full:\n${describeIssues(parsed.error)}`);
           parsed = DraftSchema.safeParse(r.raw);
         }
         if (!parsed.success) throw new AiError(describeIssues(parsed.error), "The AI's answer didn't fit the expected shape. Try again.");

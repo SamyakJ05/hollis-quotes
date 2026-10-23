@@ -82,6 +82,8 @@ export const companySettings = pgTable("company_settings", {
   /** Words that always mean "go and look first", e.g. "car park". */
   siteVisitKeywords: jsonb("site_visit_keywords").$type<string[]>().notNull().default([]),
   quoteValidityDays: integer("quote_validity_days").notNull().default(30),
+  /** The company's own estimating habits, in their words, given to the AI with every enquiry. */
+  estimatingNotes: text("estimating_notes"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

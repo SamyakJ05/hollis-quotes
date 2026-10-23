@@ -45,6 +45,11 @@ export default async function SettingsPage() {
           <dt className="text-stone-500">Always site visit for</dt><dd>{s.siteVisitKeywords.length ? s.siteVisitKeywords.join(", ") : "—"}</dd>
           <dt className="text-stone-500">Quotes valid for</dt><dd>{s.quoteValidityDays} days</dd>
         </dl>
+        <div className="pt-3">
+          <h3 className="font-medium">How we estimate</h3>
+          <p className="text-xs text-stone-500">Given to the AI with every enquiry, so drafts follow your habits.</p>
+          <pre className="mt-2 whitespace-pre-wrap rounded bg-stone-50 p-3 font-sans text-sm text-stone-700">{s.estimatingNotes ?? "None yet."}</pre>
+        </div>
         <p className="text-xs text-stone-500">Editing these in the app is on the to-do list.</p>
       </div>
     </section>

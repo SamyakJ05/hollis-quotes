@@ -3,7 +3,7 @@
  * Used by scripts/seed.ts and by the tests (against an in-memory Postgres).
  */
 import bcrypt from "bcryptjs";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { DB } from "@/db";
 import { companies, companySettings, customerContacts, customers, rates, users } from "@/db/schema";
 import { parseCsv } from "./csv";
@@ -19,12 +19,22 @@ export type CompanySeed = {
   decisions: Record<string, RateDecision>;
   siteVisitAreaM2: number;
   siteVisitKeywords?: string[];
+  estimatingNotes?: string;
   users: { email: string; name: string; role: "owner" | "staff"; password: string }[];
 };
 
 export async function seedCompany(db: DB, seed: CompanySeed) {
   const existing = await db.select().from(companies).where(eq(companies.slug, seed.slug));
-  if (existing.length) return { companyId: existing[0].id, skipped: true as const, problems: [] as string[] };
+  if (existing.length) {
+    // Re-running the seed fills in estimating notes added after the first seed, without overwriting edits.
+    if (seed.estimatingNotes) {
+      await db
+        .update(companySettings)
+        .set({ estimatingNotes: seed.estimatingNotes })
+        .where(and(eq(companySettings.companyId, existing[0].id), isNull(companySettings.estimatingNotes)));
+    }
+    return { companyId: existing[0].id, skipped: true as const, problems: [] as string[] };
+  }
 
   const vatBps = 2000;
   const rateResult = normaliseRates(parseCsv(seed.ratesCsv), { vatBps, decisions: seed.decisions });
@@ -42,6 +52,7 @@ export async function seedCompany(db: DB, seed: CompanySeed) {
       minimumChargePence: rateResult.minimumChargePence ?? 0,
       siteVisitAreaM2: seed.siteVisitAreaM2,
       siteVisitKeywords: seed.siteVisitKeywords ?? [],
+      estimatingNotes: seed.estimatingNotes ?? null,
     });
 
     for (const u of seed.users) {

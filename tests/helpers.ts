@@ -7,6 +7,7 @@ import type { DB } from "@/db";
 import { seedCompany } from "@/import/seed";
 import { HOLLIS_RATE_DECISIONS } from "@/import/hollis-decisions";
 import { CHASE_RATE_DECISIONS } from "@/import/chase-decisions";
+import { CHASE_ESTIMATING_NOTES, HOLLIS_ESTIMATING_NOTES } from "@/import/estimating-notes";
 
 export async function freshDbWithBothCompanies() {
   const client = new PGlite();
@@ -21,6 +22,7 @@ export async function freshDbWithBothCompanies() {
     decisions: HOLLIS_RATE_DECISIONS,
     siteVisitAreaM2: 150,
     siteVisitKeywords: ["car park", "carpark", "car-park"],
+    estimatingNotes: HOLLIS_ESTIMATING_NOTES,
     users: [{ email: "dave@hollis.test", name: "Dave", role: "owner", password: "pw-hollis" }],
   });
   const chase = await seedCompany(db, {
@@ -31,6 +33,7 @@ export async function freshDbWithBothCompanies() {
     customersCsv: readFileSync("data/chase-customers.csv", "utf8"),
     decisions: CHASE_RATE_DECISIONS,
     siteVisitAreaM2: 100,
+    estimatingNotes: CHASE_ESTIMATING_NOTES,
     users: [{ email: "gaz@chase.test", name: "Gaz", role: "owner", password: "pw-chase" }],
   });
   return { db, client, hollisId: hollis.companyId, chaseId: chase.companyId };

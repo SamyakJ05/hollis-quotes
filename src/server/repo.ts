@@ -193,7 +193,7 @@ export function makeRepo(db: DB, companyId: string, userId: string | null = null
         reviewFlag: r.reviewFlag,
         importNotes: r.importNotes,
       }));
-      return { companyName: c.name, tradingArea: c.tradingArea, settings, rates: pricingRates };
+      return { companyName: c.name, tradingArea: c.tradingArea, estimatingNotes: s.estimatingNotes, settings, rates: pricingRates };
     },
 
     async createDraftQuote(input: {

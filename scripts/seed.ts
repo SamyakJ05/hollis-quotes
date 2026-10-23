@@ -5,6 +5,7 @@ import { createDb } from "../src/db";
 import { seedCompany } from "../src/import/seed";
 import { HOLLIS_RATE_DECISIONS } from "../src/import/hollis-decisions";
 import { CHASE_RATE_DECISIONS } from "../src/import/chase-decisions";
+import { CHASE_ESTIMATING_NOTES, HOLLIS_ESTIMATING_NOTES } from "../src/import/estimating-notes";
 import { runMigrations } from "./migrate";
 
 function password(envName: string): string {
@@ -33,6 +34,7 @@ async function main() {
     decisions: HOLLIS_RATE_DECISIONS,
     siteVisitAreaM2: 150,
     siteVisitKeywords: ["car park", "carpark", "car-park"],
+    estimatingNotes: HOLLIS_ESTIMATING_NOTES,
     users: [
       { email: "dave@hollisgroundworks.test", name: "Dave Hollis", role: "owner", password: hollisPw },
       { email: "shaz@hollisgroundworks.test", name: "Shaz", role: "staff", password: hollisPw },
@@ -48,6 +50,7 @@ async function main() {
     customersCsv: readFileSync("data/chase-customers.csv", "utf8"),
     decisions: CHASE_RATE_DECISIONS,
     siteVisitAreaM2: 100,
+    estimatingNotes: CHASE_ESTIMATING_NOTES,
     users: [{ email: "gaz@chaselandscapes.test", name: "Gaz", role: "owner", password: chasePw }],
   });
   console.log("Chase:", chase.skipped ? "already seeded" : "seeded", chase.problems);

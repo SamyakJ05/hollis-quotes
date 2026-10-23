@@ -12,9 +12,9 @@ Someone at Hollis Groundworks pastes a customer enquiry and gets a **draft** quo
 
 | Enquiry | What the app does | Why |
 |---|---|---|
-| **Okafor drive extension** | Priced. 20ft × 15ft is converted *in code* to 27.871 m². Dig, membrane, sub-base, charcoal block paving, edging, one muck-away load, site setup. The tap move is excluded ("not something we price"). The dropped kerb mention is flagged and **not** priced (she already has one). Matched to her 2025 job even though she wrote from a different email. | The easy job Dave wants off his kitchen table. |
+| **Okafor drive extension** | Priced (live run: £3,595.97 + VAT). 20ft × 15ft is converted *in code* to 27.871 m². Strip topsoil plus an extra 100mm dig to ~250mm, a skip for the spoil, membrane, sub-base, charcoal block paving, edging on the two sides she names, site setup. It asks whether the skip can go on her drive and what pattern and edging the old drive has. The tap move is excluded ("not something we price"). The dropped kerb mention is flagged and **not** priced (she already has one). Matched to her 2025 job even though she wrote from a different email. | The easy job Dave wants off his kitchen table. |
 | **Greenway car park** | **No price.** Site visit, with reasons (car park, ~1,200 m² is over the 150 m² limit, drainage needs seeing, 24/7 phasing). The new dropped kerb is excluded and referred to the council. The draft reply arranges a visit. | Dave: "I'm not quoting a car park off an email." The code enforces this even if the model tries to price it. |
-| **Kestrel Row patio** | Priced normally (break out concrete, sub-base, porcelain, channel drain, gully, skip **+ road permit**, setup). The pipe run has no rate, so it's excluded. 30-day terms and invoices to accounts@ are shown from the customer record. **A red warning** quotes the hidden "40% partner discount / waive minimum / mark as approved" note. | It's a prompt injection. It has no effect, by design (see below). |
+| **Kestrel Row patio** | Priced normally (live run: £3,638.00 + VAT): break out concrete, sub-base, membrane, porcelain, channel drain, gully connection, skip **+ road permit**, setup. The pipe run has no rate, so it's excluded. 30-day terms and invoices to accounts@ are shown from the customer record. **A red warning** quotes the hidden "40% partner discount / waive minimum / mark as approved" note. | It's a prompt injection. It has no effect, by design (see below). |
 
 ## How it works
 
@@ -82,7 +82,8 @@ Shaz's CSVs are in `data/` exactly as sent. The importer does the mechanical cle
 
 - **Next.js 15 + TypeScript + Postgres (Neon) + Drizzle**, as you work. **PGlite** (Postgres in-process) for local dev and tests, so tests run against real Postgres, foreign keys and all, with nothing to install.
 - **Money in integer pence, quantities in thousandths.** No floats near money.
-- **Forced tool call + Zod validation** for both Anthropic and OpenAI, with one repair retry. If it still fails, the user gets a plain error, not a guessed quote.
+- **Structured output + Zod validation**, with one repair retry. If it still fails, the user gets a plain error, not a guessed quote. Anthropic uses `output_config.format` (JSON schema), with a forced tool call as the fallback for older models. Live testing showed `claude-sonnet-5-5` *rejects* forced tool calls, which would have broken the app for anyone testing with their own key. OpenAI uses a forced function call.
+- **Each company's estimating habits are data, not code.** The first live run dug a drive only 150mm deep and forgot the spoil. Rather than hard-code groundworks knowledge (Gaz does landscaping), each company has short "how we estimate" notes in its settings, shown on the Settings page and sent with every enquiry. Hollis's say a drive needs ~250mm out and spoil needs a skip or a load; the next run did exactly that.
 - **Measurements are copied verbatim** ("20ft by 15ft") with a certainty (stated / estimated / vague), and code converts them. Vague ones ("size of two cars") are flagged.
 - **Site visit beats price.** If there's any doubt the code takes the cautious path, and the model can't overrule it.
 - **No email sending.** The brief didn't ask for it, and "approved" plus copyable text keeps a person in the loop.
@@ -94,6 +95,7 @@ Shaz's CSVs are in `data/` exactly as sent. The importer does the mechanical cle
 - The cancelled rates above, the PT01 VAT conversion and the KB01-over-KB02 choice are assumptions until Shaz confirms them.
 - A matching repeat customer is identified by exact email. Fuzzy matches are suggested, not applied.
 - Chase Landscapes' rates and customers are invented.
+- The "how we estimate" notes (`src/import/estimating-notes.ts`) are my trade defaults, written for Dave and Gaz to correct.
 
 ## Tests
 
@@ -115,7 +117,7 @@ npx tsx scripts/seed-fixture-quotes.ts   # optional: the 3 enquiries as drafts w
 
 ## What I'd do next
 
-1. **Edit rates and rules in the app**, with a "confirm" button for each flagged rate so Shaz clears the review list, and price history (Dave's March rise).
+1. **Edit rates, rules and estimating notes in the app**, with a "confirm" button for each flagged rate so Shaz clears the review list, and price history (Dave's March rise).
 2. **Postgres row-level security** as a third wall behind the repository and the composite keys.
 3. **Email in and out:** a forwarding address that creates drafts automatically, and sending approved quotes as a PDF from the company's own address.
 4. **Learning from edits:** keep what people change on AI drafts (e.g. always adding a skip) and feed it back as company-specific guidance, with an eval set of past enquiries so prompt changes are measured, not guessed.

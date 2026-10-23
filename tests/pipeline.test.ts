@@ -44,6 +44,8 @@ describe("pipeline", () => {
     expect(seen.system).not.toContain("BP01");
     expect(seen.system).not.toMatch(/£\s?\d/);
     expect(seen.user).toMatch(/^<enquiry>/);
+    expect(seen.system).toContain("green waste removal (LS08)");
+    expect(seen.system).not.toContain("250mm dug out");
   });
 
   it("saves a draft, matched to the right customer", async () => {
