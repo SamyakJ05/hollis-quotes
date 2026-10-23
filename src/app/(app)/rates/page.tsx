@@ -37,7 +37,7 @@ export default async function RatesPage() {
 
       {attention.length > 0 && (
         <div className="rounded border border-amber-300 bg-amber-50 p-4 text-sm">
-          <p className="font-medium text-amber-900">{attention.length} rates need someone to check them</p>
+          <p className="font-medium text-amber-900">{attention.length === 1 ? "1 rate needs" : `${attention.length} rates need`} someone to check {attention.length === 1 ? "it" : "them"}</p>
           <ul className="mt-2 list-disc space-y-1 pl-5 text-amber-900">
             {attention.map((r) => (
               <li key={r.id}>
