@@ -2,11 +2,11 @@
 
 Someone at Hollis Groundworks pastes a customer enquiry and gets a **draft** quote worked out from their own price list. A person checks it, edits it if needed, and approves it. Nothing goes to a customer without a person saying yes, and the app never sends email.
 
-- **Live app:** _LINK_
-- **Logins** (separate companies, separate data):
-  - Hollis Groundworks: `dave@hollisgroundworks.test` / _PASSWORD_ (also `shaz@hollisgroundworks.test`)
-  - Chase Landscapes (Dave's mate Gaz, made up): `gaz@chaselandscapes.test` / _PASSWORD_
-- Add your Anthropic key under **Settings** for each company before drafting.
+- **Live app:** https://hollis-quotes.vercel.app
+- **Logins** (separate companies, separate data; passwords are in the submission email, since this repo is public):
+  - Hollis Groundworks: `dave@hollisgroundworks.test` (also `shaz@hollisgroundworks.test`)
+  - Chase Landscapes (Dave's mate Gaz, made up): `gaz@chaselandscapes.test`
+- Add your Anthropic or OpenAI key under **Settings** for each company before drafting. Hollis already has some sample quotes from my own test run.
 
 ## The three enquiries
 
