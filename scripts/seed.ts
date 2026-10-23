@@ -32,6 +32,7 @@ async function main() {
     customersCsv: readFileSync("data/hollis-customers.csv", "utf8"),
     decisions: HOLLIS_RATE_DECISIONS,
     siteVisitAreaM2: 150,
+    siteVisitKeywords: ["car park", "carpark", "car-park"],
     users: [
       { email: "dave@hollisgroundworks.test", name: "Dave Hollis", role: "owner", password: hollisPw },
       { email: "shaz@hollisgroundworks.test", name: "Shaz", role: "staff", password: hollisPw },

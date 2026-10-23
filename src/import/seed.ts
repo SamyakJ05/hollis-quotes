@@ -18,6 +18,7 @@ export type CompanySeed = {
   customersCsv: string;
   decisions: Record<string, RateDecision>;
   siteVisitAreaM2: number;
+  siteVisitKeywords?: string[];
   users: { email: string; name: string; role: "owner" | "staff"; password: string }[];
 };
 
@@ -40,6 +41,7 @@ export async function seedCompany(db: DB, seed: CompanySeed) {
       vatRateBps: vatBps,
       minimumChargePence: rateResult.minimumChargePence ?? 0,
       siteVisitAreaM2: seed.siteVisitAreaM2,
+      siteVisitKeywords: seed.siteVisitKeywords ?? [],
     });
 
     for (const u of seed.users) {

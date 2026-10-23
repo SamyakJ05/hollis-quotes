@@ -20,6 +20,7 @@ export async function freshDbWithBothCompanies() {
     customersCsv: readFileSync("data/hollis-customers.csv", "utf8"),
     decisions: HOLLIS_RATE_DECISIONS,
     siteVisitAreaM2: 150,
+    siteVisitKeywords: ["car park", "carpark", "car-park"],
     users: [{ email: "dave@hollis.test", name: "Dave", role: "owner", password: "pw-hollis" }],
   });
   const chase = await seedCompany(db, {

@@ -23,6 +23,7 @@ import {
   unique,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { QuoteDetails } from "@/quote/build";
 
 const id = () => uuid("id").primaryKey().default(sql`gen_random_uuid()`);
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
@@ -78,6 +79,8 @@ export const companySettings = pgTable("company_settings", {
   minimumChargePence: integer("minimum_charge_pence").notNull().default(0),
   /** Jobs above this area (m2) always go to a site visit, never an emailed price. */
   siteVisitAreaM2: integer("site_visit_area_m2").notNull().default(150),
+  /** Words that always mean "go and look first", e.g. "car park". */
+  siteVisitKeywords: jsonb("site_visit_keywords").$type<string[]>().notNull().default([]),
   quoteValidityDays: integer("quote_validity_days").notNull().default(30),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -190,6 +193,8 @@ export const quotes = pgTable(
     minimumChargeAppliedPence: integer("minimum_charge_applied_pence").notNull().default(0),
     vatPence: integer("vat_pence").notNull().default(0),
     totalPence: integer("total_pence").notNull().default(0),
+    /** Measurements, exclusions, conditions, questions, assumptions, site-visit reasons. */
+    details: jsonb("details").$type<QuoteDetails>(),
     customerMessage: text("customer_message"),
     approvedBy: uuid("approved_by").references(() => users.id),
     approvedAt: timestamp("approved_at", { withTimezone: true }),

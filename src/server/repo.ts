@@ -21,6 +21,10 @@ import {
   rates,
 } from "@/db/schema";
 import { decryptSecret, encryptSecret, last4 } from "@/lib/crypto";
+import { lineTotal } from "@/lib/money";
+import type { BuiltQuote, PricingSettings, RateForPricing } from "@/quote/build";
+import { computeTotals } from "@/quote/totals";
+import type { Unit } from "@/db/schema";
 import { normaliseEmail, normalisePhone } from "@/lib/contact";
 
 export type Repo = ReturnType<typeof makeRepo>;
@@ -148,6 +152,158 @@ export function makeRepo(db: DB, companyId: string, userId: string | null = null
         .where(and(eq(quoteLines.companyId, companyId), eq(quoteLines.quoteId, id)))
         .orderBy(asc(quoteLines.position));
       return { ...q, lines };
+    },
+
+    /** Everything the AI prompt and the pricing engine need, for this company only. */
+    async pricingContext() {
+      const [c] = await db.select().from(companies).where(eq(companies.id, companyId));
+      const [s] = await db.select().from(companySettings).where(eq(companySettings.companyId, companyId));
+      const all = await db.select().from(rates).where(eq(rates.companyId, companyId)).orderBy(asc(rates.code));
+      const settings: PricingSettings = {
+        minimumChargePence: s.minimumChargePence,
+        vatRateBps: s.vatRateBps,
+        siteVisitAreaM2: s.siteVisitAreaM2,
+        siteVisitKeywords: s.siteVisitKeywords,
+      };
+      const pricingRates: RateForPricing[] = all.map((r) => ({
+        code: r.code,
+        description: r.description,
+        unit: r.unit,
+        ratePence: r.ratePence,
+        status: r.status,
+        addons: r.addons,
+        caveats: r.caveats,
+        reviewFlag: r.reviewFlag,
+        importNotes: r.importNotes,
+      }));
+      return { companyName: c.name, tradingArea: c.tradingArea, settings, rates: pricingRates };
+    },
+
+    async createDraftQuote(input: {
+      rawText: string;
+      fromEmail: string | null;
+      subject: string | null;
+      customerId: string | null;
+      built: BuiltQuote;
+      aiOutput: unknown;
+      aiProvider: string;
+      aiModel: string;
+    }) {
+      return db.transaction(async (tx) => {
+        const [enq] = await tx
+          .insert(enquiries)
+          .values({ companyId, rawText: input.rawText, fromEmail: input.fromEmail, subject: input.subject, createdBy: userId })
+          .returning();
+        const b = input.built;
+        const [q] = await tx
+          .insert(quotes)
+          .values({
+            companyId,
+            enquiryId: enq.id,
+            customerId: input.customerId,
+            status: "draft",
+            outcome: b.outcome,
+            jobSummary: b.jobSummary,
+            aiOutput: input.aiOutput,
+            aiProvider: input.aiProvider,
+            aiModel: input.aiModel,
+            flags: b.flags,
+            details: b.details,
+            customerMessage: b.customerMessage,
+            ...b.totals,
+          })
+          .returning();
+        if (b.lines.length) {
+          await tx.insert(quoteLines).values(b.lines.map((l) => ({ ...l, companyId, quoteId: q.id })));
+        }
+        await tx.insert(auditEvents).values({
+          companyId,
+          userId,
+          entity: "quote",
+          entityId: q.id,
+          action: "ai_draft_created",
+          detail: { outcome: b.outcome, totalPence: b.totals.totalPence, flags: b.flags.length, model: input.aiModel },
+        });
+        return q.id;
+      });
+    },
+
+    /**
+     * A person's edits. Only drafts can change. Totals are recomputed here from
+     * the submitted lines, so the minimum charge and VAT always hold.
+     */
+    async saveQuoteEdits(
+      quoteId: string,
+      edit: {
+        customerId: string | null;
+        customerMessage: string;
+        lines: { rateCode: string | null; description: string; unit: Unit; quantityMilli: number; unitPricePence: number; source: "ai" | "human" | "rule"; working: string | null; assumption: string | null }[];
+      },
+    ) {
+      return db.transaction(async (tx) => {
+        const [q] = await tx
+          .select()
+          .from(quotes)
+          .where(and(eq(quotes.companyId, companyId), eq(quotes.id, quoteId)));
+        if (!q) return { ok: false as const, error: "Quote not found" };
+        if (q.status !== "draft") return { ok: false as const, error: "Only drafts can be edited" };
+        if (edit.customerId && !(await getCustomer(edit.customerId))) return { ok: false as const, error: "Unknown customer" };
+        const [s] = await tx.select().from(companySettings).where(eq(companySettings.companyId, companyId));
+        const lines = edit.lines.map((l, i) => ({ ...l, position: i, lineTotalPence: lineTotal(l.quantityMilli, l.unitPricePence) }));
+        const priced = q.outcome === "priced" || lines.length > 0;
+        const totals = computeTotals(lines.map((l) => l.lineTotalPence), {
+          minimumChargePence: s.minimumChargePence,
+          vatRateBps: s.vatRateBps,
+          priced,
+        });
+        await tx.delete(quoteLines).where(and(eq(quoteLines.companyId, companyId), eq(quoteLines.quoteId, quoteId)));
+        if (lines.length) await tx.insert(quoteLines).values(lines.map((l) => ({ ...l, companyId, quoteId })));
+        await tx
+          .update(quotes)
+          .set({
+            ...totals,
+            outcome: priced ? "priced" : q.outcome,
+            customerId: edit.customerId,
+            customerMessage: edit.customerMessage,
+            updatedAt: new Date(),
+          })
+          .where(and(eq(quotes.companyId, companyId), eq(quotes.id, quoteId)));
+        await tx.insert(auditEvents).values({
+          companyId,
+          userId,
+          entity: "quote",
+          entityId: quoteId,
+          action: "edited",
+          detail: { before: { totalPence: q.totalPence }, after: { totalPence: totals.totalPence, lines: lines.length } },
+        });
+        return { ok: true as const };
+      });
+    },
+
+    /** The only way a quote leaves draft. Needs a signed-in person. */
+    async setQuoteStatus(quoteId: string, status: "approved" | "declined") {
+      if (!userId) throw new Error("A person must approve quotes");
+      const updated = await db
+        .update(quotes)
+        .set({
+          status,
+          approvedBy: status === "approved" ? userId : null,
+          approvedAt: status === "approved" ? new Date() : null,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(quotes.companyId, companyId), eq(quotes.id, quoteId), eq(quotes.status, "draft")))
+        .returning({ id: quotes.id, totalPence: quotes.totalPence });
+      if (!updated.length) return false;
+      await audit("quote", quoteId, status, { totalPence: updated[0].totalPence });
+      return true;
+    },
+
+    async auditTrail(entityId: string) {
+      return db
+        .select()
+        .from(auditEvents)
+        .where(and(eq(auditEvents.companyId, companyId), eq(auditEvents.entityId, entityId)))
+        .orderBy(asc(auditEvents.createdAt));
     },
 
     audit,
