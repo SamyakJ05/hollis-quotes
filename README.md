@@ -82,7 +82,7 @@ Shaz's CSVs are in `data/` exactly as sent. The importer does the mechanical cle
 
 - **Next.js 15 + TypeScript + Postgres (Neon) + Drizzle**, as you work. **PGlite** (Postgres in-process) for local dev and tests, so tests run against real Postgres, foreign keys and all, with nothing to install.
 - **Money in integer pence, quantities in thousandths.** No floats near money.
-- **Structured output + Zod validation**, with one repair retry. If it still fails, the user gets a plain error, not a guessed quote. Anthropic uses `output_config.format` (JSON schema), with a forced tool call as the fallback for older models. Live testing showed `claude-sonnet-5-5` *rejects* forced tool calls, which would have broken the app for anyone testing with their own key. OpenAI uses a forced function call.
+- **Structured output + Zod validation**, with one repair retry. If it still fails, the user gets a plain error, not a guessed quote. Anthropic uses `output_config.format` (JSON schema), with a forced tool call as the fallback for older models. Live testing showed `claude-sonnet-5-5` *rejects* forced tool calls, which would have broken the app for anyone testing with their own key. OpenAI uses strict structured outputs (`response_format` `json_schema`, `strict: true`) against the same schema, with a forced function call as the fallback for models that reject it. Each company chooses its provider (and optionally a model) in Settings; a key is checked for the right format and with the provider before it's saved, and a refusal, a cut-off answer or an invalid answer becomes a plain error, never a guessed quote.
 - **Each company's estimating habits are data, not code.** The first live run dug a drive only 150mm deep and forgot the spoil. Rather than hard-code groundworks knowledge (Gaz does landscaping), each company has short "how we estimate" notes in its settings, shown on the Settings page and sent with every enquiry. Hollis's say a drive needs ~250mm out and spoil needs a skip or a load; the next run did exactly that.
 - **Measurements are copied verbatim** ("20ft by 15ft") with a certainty (stated / estimated / vague), and code converts them. Vague ones ("size of two cars") are flagged.
 - **Site visit beats price.** If there's any doubt the code takes the cautious path, and the model can't overrule it.
@@ -99,9 +99,9 @@ Shaz's CSVs are in `data/` exactly as sent. The importer does the mechanical cle
 
 ## Tests
 
-`npm test`: 60 tests. Import decisions, money and VAT rounding, tenant isolation (rates, customers, quotes, foreign keys, key encryption), the pricing engine on all three enquiries (including the compromised-model case and the forced site visit), and the save → edit → approve pipeline (approval needs a person, happens once, locks, is audited; another company can't approve or edit; approving or saving a version that changed since it was opened is refused (no lost updates); security warnings must be acknowledged; adding prices to a site visit needs a confirm; the server, not the browser, decides which lines count as human-edited).
+`npm test`: 93 tests. Import decisions, money and VAT rounding, tenant isolation (rates, customers, quotes, foreign keys, key encryption), the pricing engine on all three enquiries (including the compromised-model case and the forced site visit), and the save → edit → approve pipeline (approval needs a person, happens once, locks, is audited; another company can't approve or edit; approving or saving a version that changed since it was opened is refused (no lost updates); security warnings must be acknowledged; adding prices to a site visit needs a confirm; the server, not the browser, decides which lines count as human-edited).
 
-`npx tsx scripts/try-enquiries.ts` runs the three enquiries through a live model (key from `.env`).
+`npx tsx scripts/try-enquiries.ts` runs the three enquiries through a live model (key from `.env`; add `--provider openai` to use `OPENAI_API_KEY` instead).
 
 ## Running it
 
@@ -117,6 +117,7 @@ npx tsx scripts/seed-fixture-quotes.ts   # optional: the 3 enquiries as drafts w
 
 ## Known limitations
 
+- **OpenAI support has not been run end to end against a live OpenAI key (I didn't have one).** It is covered by mocked-SDK tests (request shape, strict schema, retry, refusal, cut-off, error mapping, function-call fallback, same guards and totals as Anthropic) and a fake-key check in Settings (wrong-provider keys are caught locally; a made-up OpenAI key is rejected by OpenAI and nothing is saved). Anthropic was live-tested with all three enquiries. If you test with an OpenAI key, please tell me what you see.
 - **The AI never sees customer records**, by design: internal notes like "paid late" shouldn't reach a model or a customer. The side effect is that it can ask for things the company already knows. In the live run, the Greenway reply asked for the site address even though "Rushall Manor, Rushall" is on the customer record. The reviewer sees the record next to the draft and can edit the line before approving. A fix would be to pass the AI only the safe fields (name, address, "repeat customer") and never the notes.
 - Output varies a little between runs (e.g. a skip vs a muck-away load for the same spoil). The engine makes every number traceable and every line editable, but there's no eval set yet to measure drift (see next steps).
 - Customer matching is by exact email. A new email address with no other match falls back to suggestions a person confirms.

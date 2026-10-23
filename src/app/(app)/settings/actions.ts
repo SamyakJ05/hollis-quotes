@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { checkKeyFormat } from "@/ai/provider-info";
 import { verifyKey } from "@/ai/providers";
 import { requireTenant } from "@/server/session";
 
@@ -15,7 +16,8 @@ export async function saveKey(_prev: { error?: string; ok?: string } | undefined
   const parsed = KeyInput.safeParse({ provider: form.get("provider"), apiKey: form.get("apiKey"), model: form.get("model") ?? "" });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message };
   const { provider, apiKey, model } = parsed.data;
-  if (provider === "anthropic" && !apiKey.startsWith("sk-ant-")) return { error: "Anthropic keys start with sk-ant-" };
+  const wrong = checkKeyFormat(provider, apiKey);
+  if (wrong) return { error: wrong };
   const check = await verifyKey({ provider, apiKey, model: model || null });
   if (!check.ok) return { error: check.message };
   const { repo } = await requireTenant();

@@ -26,10 +26,10 @@ Next.js 15 (App Router, server actions) · TypeScript · Tailwind 4 · Drizzle O
 npm install
 npm run db:seed        # runs migrations, seeds Hollis + Chase (idempotent; fills estimating notes if missing)
 npm run dev            # http://localhost:3000
-npm test               # 60 tests (vitest, real Postgres via PGlite)
+npm test               # 93 tests (vitest, real Postgres via PGlite)
 npm run typecheck
 npx drizzle-kit generate --name <change>   # after editing src/db/schema.ts
-npx tsx scripts/try-enquiries.ts [model] [fileprefix]  # 3 enquiries vs a live model, needs ANTHROPIC_API_KEY in .env
+npx tsx scripts/try-enquiries.ts [model] [fileprefix] [--provider anthropic|openai]  # 3 enquiries vs a live model, needs ANTHROPIC_API_KEY (or OPENAI_API_KEY) in .env
 npx tsx scripts/seed-fixture-quotes.ts                 # 3 drafts from hand-written fixtures, no key needed
 ```
 
@@ -66,7 +66,9 @@ review page → edits via repo.saveQuoteEdits (totals recomputed server-side) �
 
 - Default models: `claude-sonnet-5-5` (Anthropic), `gpt-5.4-mini` (OpenAI); per-company override in settings.
 - **Anthropic uses structured output** (`output_config: { format: { type: "json_schema", schema } }`). `claude-sonnet-5-5` **rejects forced `tool_choice`**; the forced-tool path is only a fallback for older models. `strictSchema()` closes objects, requires all keys, and strips min/max/length constraints for the provider; Zod re-validates with the full rules. One repair retry with the Zod errors, then a user-facing `AiError`.
-- OpenAI uses a forced function call with the JSON schema.
+- **OpenAI uses strict structured outputs** on `chat.completions` (`response_format: { type: "json_schema", json_schema: { name: "submit_draft", schema: strictSchema(...), strict: true } }`): no temperature or token limit set, timeout 120s, `maxRetries` 1. A 400 about `response_format`/`json_schema`/structured outputs falls back to the forced function call (non-strict schema). `message.refusal` → "The AI declined to draft this quote."; `finish_reason: "length"` → "The AI's answer was cut off. Try again."; unparseable or invalid JSON → one repair retry with the Zod issues, then `AiError`. Shared status mapping: 401/403 key rejected, 404 model unavailable, 429 rate limited. Error text is scrubbed of the key and anything `sk-…`-shaped before it can be logged.
+- **OpenAI is NOT live-tested** (no key available): it is verified by `tests/providers.test.ts` (mocked SDKs) and a fake-key check in Settings only. Anthropic was live-tested. Don't claim otherwise.
+- Provider facts shared by UI and server (default models, labels, key placeholders, `checkKeyFormat`) live in `src/ai/provider-info.ts` (no SDK imports, safe for client components). Settings: the key must match the chosen provider (`sk-ant-` vs `sk-`, with "Switch the provider to …" hints), then `verifyKey` must pass before anything is saved. The key form submits via `onSubmit` (not the form `action` prop) so React 19's post-action form reset can't desync the provider dropdown.
 - Per-company **estimating notes** (`company_settings.estimating_notes`, seeded from `src/import/estimating-notes.ts`) are injected into the prompt as "HOW <COMPANY> ESTIMATES". This is how trade knowledge varies by tenant (Hollis: ~250mm drive dig via EX01+EX02, skip/muck-away for spoil, PL02 every job).
 - Live results (Sonnet 5.5): Okafor ≈ £3,596 ex VAT, Greenway = site visit with no price, Kestrel = £3,638.00 ex VAT plus one red injection warning. Runs take 25–35s.
 
@@ -84,7 +86,7 @@ src/db/schema.ts            tables, enums, composite FKs
 src/db/index.ts             createDb(url): node-postgres or PGlite
 drizzle/                    migrations 0000 init, 0001 quote_details, 0002 estimating_notes
 src/import/                 csv, rates, customers, seed, decisions, estimating-notes
-src/ai/                     draft-schema (Zod), prompt, providers
+src/ai/                     draft-schema (Zod), prompt, providers, provider-info
 src/quote/                  measurements, guards, totals, build, pipeline, render-text
 src/server/repo.ts          ALL tenant-scoped reads/writes
 src/server/session.ts       JWT cookie, currentUser, requireTenant

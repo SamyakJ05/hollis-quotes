@@ -1,6 +1,6 @@
 import { requireTenant } from "@/server/session";
 import { formatGBP } from "@/lib/money";
-import { DEFAULT_MODELS } from "@/ai/providers";
+import { DEFAULT_MODELS, PROVIDER_INFO } from "@/ai/provider-info";
 import { KeyForm } from "./key-form";
 import { removeKey } from "./actions";
 
@@ -22,7 +22,7 @@ export default async function SettingsPage() {
         {s.hasApiKey ? (
           <div className="flex flex-wrap items-center gap-3 rounded bg-stone-50 p-3 text-sm">
             <span>
-              {s.aiProvider === "anthropic" ? "Anthropic" : "OpenAI"} key ending <span className="font-mono">…{s.apiKeyLast4}</span>
+              {PROVIDER_INFO[s.aiProvider].label} key ending <span className="font-mono">…{s.apiKeyLast4}</span>
               {s.apiKeyUpdatedAt && <> · saved {s.apiKeyUpdatedAt.toLocaleDateString("en-GB")}</>} · model{" "}
               <span className="font-mono">{s.aiModel ?? DEFAULT_MODELS[s.aiProvider]}</span>
             </span>

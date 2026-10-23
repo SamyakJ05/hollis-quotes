@@ -259,3 +259,32 @@ describe("human review", () => {
     expect((await repo.getQuote(r.quoteId))!.flags.some((f) => f.message.startsWith("Needs a site visit. No price"))).toBe(false);
   });
 });
+
+describe("each company uses its own provider and key", () => {
+  it("Chase on OpenAI and Hollis on Anthropic never borrow each other's", async () => {
+    const hollis = makeRepo(ctx.db, ctx.hollisId, daveId);
+    const chase = makeRepo(ctx.db, ctx.chaseId);
+    await hollis.saveApiKey("anthropic", "sk-ant-hollis-fake-0001", null);
+    await chase.saveApiKey("openai", "sk-chase-openai-fake-0002", "gpt-5.5");
+
+    const seen: { company: string; provider: string; apiKey: string; model: string | null }[] = [];
+    const factory = (company: string, draft: Draft) => (creds: { provider: string; apiKey: string; model: string | null }) => {
+      seen.push({ company, ...creds });
+      return (async () => ({ draft, model: creds.model ?? "default-model", raw: draft })) as DraftCaller;
+    };
+    const hq = (await draftQuoteFromEnquiry(hollis, enquiry("1-okafor-driveway.txt"), factory("hollis", okaforDraft))) as { quoteId: string };
+    const cq = (await draftQuoteFromEnquiry(chase, "From: a@b.com\n\nPlease quote new turf for my 40 m2 lawn", factory("chase", okaforDraft))) as { quoteId: string };
+
+    expect(seen).toEqual([
+      { company: "hollis", provider: "anthropic", apiKey: "sk-ant-hollis-fake-0001", model: null },
+      { company: "chase", provider: "openai", apiKey: "sk-chase-openai-fake-0002", model: "gpt-5.5" },
+    ]);
+    expect((await hollis.getQuote(hq.quoteId))!).toMatchObject({ aiProvider: "anthropic" });
+    expect((await chase.getQuote(cq.quoteId))!).toMatchObject({ aiProvider: "openai", aiModel: "gpt-5.5" });
+    // the other company can't open either quote, so can't see which provider it used
+    expect(await chase.getQuote(hq.quoteId)).toBeNull();
+    expect(await hollis.getQuote(cq.quoteId)).toBeNull();
+
+    await chase.saveApiKey("anthropic", "sk-ant-chase-key-0002", null);
+  });
+});
